@@ -1,0 +1,23 @@
+spring:
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          model: llama3.2:latest
+          temperature: 0.3
+      embedding:
+        options:
+          model: nomic-embed-text
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/assistant
+    username: postgres
+    password: postgres
+  ai:
+    vectorstore:
+      pgvector:
+        # not strictly required since we build the bean manually,
+        # but harmless to keep for documentation purposes
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
