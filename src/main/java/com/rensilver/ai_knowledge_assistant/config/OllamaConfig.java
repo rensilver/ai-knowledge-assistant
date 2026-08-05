@@ -3,7 +3,9 @@ package com.rensilver.ai_knowledge_assistant.config;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.InMemoryChatMemory;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.OllamaEmbeddingModel;
@@ -54,14 +56,29 @@ public class OllamaConfig {
     }
 
     /**
-     * In-memory conversation store backing {@code ConversationMemoryService}.
-     * Swap for a persistent implementation (e.g. backed by {@code chat_history}
-     * table) once V2 (conversation history) moves from Postgres entities to
-     * Spring AI's ChatMemory abstraction.
+     * Raw storage for conversation messages. In-memory for now (backed by a
+     * ConcurrentHashMap) — swap for {@code JdbcChatMemoryRepository} once V2
+     * (persistent conversation history) is implemented, so messages survive
+     * restarts and are shared across instances. When you do, back it with the
+     * existing {@code chat_history} table rather than letting Spring AI own
+     * a second, parallel history table.
      */
     @Bean
-    public ChatMemory chatMemory() {
-        return new InMemoryChatMemory();
+    public ChatMemoryRepository chatMemoryRepository() {
+        return new InMemoryChatMemoryRepository();
+    }
+
+    /**
+     * Policy layer on top of the repository: keeps a bounded window of the
+     * most recent messages per conversation so prompts don't grow unbounded
+     * (and blow past numCtx) as a conversation gets long.
+     */
+    @Bean
+    public ChatMemory chatMemory(ChatMemoryRepository chatMemoryRepository) {
+        return MessageWindowChatMemory.builder()
+                .chatMemoryRepository(chatMemoryRepository)
+                .maxMessages(20)
+                .build();
     }
 
     /**
