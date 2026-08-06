@@ -10,6 +10,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -37,6 +38,7 @@ import java.util.List;
  */
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final UserDetailsServiceImpl userDetailsService;
@@ -44,13 +46,6 @@ public class SecurityConfig {
 
     @Value("${app.cors.allowed-origins:http://localhost:3000}")
     private List<String> allowedOrigins;
-
-    // to check if it's necessary this two @values below
-    @Value("${app.jwt.secret}")
-    private String jwtSecret;
-
-    @Value("${app.jwt.expiration-ms}")
-    private Long jwtExpiration;
 
     public SecurityConfig(UserDetailsServiceImpl userDetailsService, JwtFilter jwtFilter) {
         this.userDetailsService = userDetailsService;
@@ -82,8 +77,7 @@ public class SecurityConfig {
      */
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(userDetailsService);
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService);
         provider.setPasswordEncoder(passwordEncoder());
         return provider;
     }

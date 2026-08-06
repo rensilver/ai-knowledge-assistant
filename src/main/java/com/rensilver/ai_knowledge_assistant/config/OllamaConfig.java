@@ -9,7 +9,7 @@ import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.OllamaEmbeddingModel;
-import org.springframework.ai.ollama.api.OllamaOptions;
+import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,7 +24,7 @@ import org.springframework.context.annotation.Configuration;
  * <ul>
  *   <li>Explicitly pin the chat model (llama3.2) and embedding model (nomic-embed-text),
  *       since they differ and rely on separate property namespaces;</li>
- *   <li>Set sane default {@link OllamaOptions} (temperature, context window) for the
+ *   <li>Set sane default {@link OllamaChatOptions} (temperature, context window) for the
  *       RAG use case, where we want low-temperature, grounded answers;</li>
  *   <li>Expose a pre-configured {@link ChatClient} bean (with conversation memory)
  *       so services like {@code ChatService} and {@code RagService} don't have to
@@ -34,7 +34,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class OllamaConfig {
 
-    @Value("${spring.ai.ollama.chat.options.model:llama3.2}")
+    @Value("${spring.ai.ollama.chat.options.model:llama3.2:latest}")
     private String chatModel;
 
     @Value("${spring.ai.ollama.chat.options.temperature:0.3}")
@@ -46,13 +46,16 @@ public class OllamaConfig {
      * over creative/varied output.
      */
     @Bean
-    public OllamaOptions ollamaChatOptions() {
-        return OllamaOptions.builder()
+    public OllamaChatOptions ollamaChatOptions() {
+        return newChatOptionsBuilder().build();
+    }
+
+    private OllamaChatOptions.Builder newChatOptionsBuilder() {
+        return OllamaChatOptions.builder()
                 .model(chatModel)
                 .temperature(temperature)
                 .topP(0.9)
-                .numCtx(4096)
-                .build();
+                .numCtx(4096);
     }
 
     /**
@@ -92,7 +95,7 @@ public class OllamaConfig {
     @Bean
     public ChatClient chatClient(ChatModel chatModel, ChatMemory chatMemory) {
         return ChatClient.builder(chatModel)
-                .defaultOptions(ollamaChatOptions())
+                .defaultOptions(newChatOptionsBuilder())
                 .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
                 .defaultSystem("""
                         You are a corporate knowledge assistant. Answer strictly using

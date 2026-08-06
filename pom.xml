@@ -50,6 +50,12 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
+		<!-- Boot 4 split RestClient autoconfiguration out of the web starter;
+		     spring-ai's Ollama integration needs it to call the Ollama HTTP API -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-restclient</artifactId>
+		</dependency>
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -61,6 +67,22 @@
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
 			<scope>runtime</scope>
+		</dependency>
+		<!-- Schema migrations (users, documents, document_chunks). Boot 4 split
+		     Flyway's autoconfiguration out into spring-boot-starter-flyway;
+		     the actual Flyway engine + postgres dialect still need adding
+		     explicitly. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-flyway</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-postgresql</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.projectlombok</groupId>
@@ -101,11 +123,6 @@
 		<dependency>
     		<groupId>org.springframework.ai</groupId>
     		<artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
-		</dependency>
-		<!-- Advisors, tool calling (for V4 agents) -->
-		<dependency>
-    		<groupId>org.springframework.ai</groupId>
-    		<artifactId>spring-ai-advisors-vector-store</artifactId>
 		</dependency>
 		<!-- PDF parsing -->
 		<dependency>
@@ -153,19 +170,17 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-bom</artifactId>
-            <version>1.0.0</version> <!-- check latest GA -->
+            <!-- 1.0.0 targets Spring Boot 3.x autoconfigure packages, which Boot 4
+                 repackaged (e.g. RestClientAutoConfiguration moved out of
+                 spring-boot-autoconfigure into spring-boot-restclient), breaking
+                 OllamaChatAutoConfiguration's @ImportAutoConfiguration reference.
+                 2.0.0 GA targets Boot 4. -->
+            <version>2.0.0</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
     </dependencies>
 	</dependencyManagement>
-
-	<repositories>
-    	<repository>
-        	<id>spring-milestones</id>
-        	<url>https://repo.spring.io/milestone</url>
-    	</repository>
-	</repositories>
 
 	<build>
 		<plugins>

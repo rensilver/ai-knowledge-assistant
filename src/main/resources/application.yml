@@ -1,4 +1,13 @@
 spring:
+  autoconfigure:
+    # PgVectorConfig defines the `vectorStore` bean itself (pinned to the
+    # document_chunks schema/dimensions), which collides with Spring AI's
+    # own auto-configured bean of the same name.
+    exclude: org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ai-knowledge-assistant
+    username: postgres
+    password: postgres
   ai:
     ollama:
       base-url: http://localhost:11434
@@ -9,22 +18,25 @@ spring:
       embedding:
         options:
           model: nomic-embed-text
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/assistant
-    username: postgres
-    password: postgres
-  ai:
     vectorstore:
       pgvector:
         # not strictly required since we build the bean manually,
         # but harmless to keep for documentation purposes
         index-type: HNSW
         distance-type: COSINE_DISTANCE
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
 app:
   cors:
     allowed-origins: http://localhost:3000
-app:
   jwt:
     secret: <base64-encoded, 256-bit+ key>
     expiration-ms: 86400000
+  document:
+    upload-dir: ./uploads
+  rag:
+    chunk-size: 800
+    top-k: 5
+    similarity-threshold: 0.5
