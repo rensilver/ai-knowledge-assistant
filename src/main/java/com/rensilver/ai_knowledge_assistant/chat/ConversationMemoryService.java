@@ -16,7 +16,7 @@ public class ConversationMemoryService {
 
     public ConversationContext resolve(UUID requestedConversationId, UUID userId) {
         UUID conversationId = requestedConversationId != null ? requestedConversationId : UUID.randomUUID();
-        String memoryKey = userId + ":" + conversationId;
+        String memoryKey = new ConversationKey(userId, conversationId).format();
         return new ConversationContext(conversationId, memoryKey);
     }
 }

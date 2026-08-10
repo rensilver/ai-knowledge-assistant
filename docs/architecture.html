@@ -1,0 +1,899 @@
+<title>AI Knowledge Assistant — Architecture &amp; Data Flow</title>
+<style>
+  :root {
+    --bg: #F3F5F2;
+    --surface: #FFFFFF;
+    --surface-alt: #EAEFEA;
+    --ink: #16201B;
+    --ink-muted: #57645C;
+    --line: #D7DED8;
+    --accent: #1F6F56;
+    --accent-strong: #14503D;
+    --accent-soft: #DCEEE6;
+    --code-bg: #101815;
+    --code-ink: #DDEFE6;
+    --code-line: #2A382F;
+    --ok: #2E7D46;
+    --warn: #A8690A;
+    --danger: #B3402E;
+    --chip-get: #2C5F8A;
+    --chip-get-soft: #E1EBF3;
+    --shadow: 0 1px 2px rgba(22,32,27,0.06), 0 8px 24px -12px rgba(22,32,27,0.18);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10140F;
+      --surface: #171D19;
+      --surface-alt: #1D2420;
+      --ink: #E7EEE9;
+      --ink-muted: #9FADA4;
+      --line: #2B332D;
+      --accent: #6FDBB3;
+      --accent-strong: #9AF0CE;
+      --accent-soft: #1B362C;
+      --code-bg: #0A0F0C;
+      --code-ink: #D8F3E4;
+      --code-line: #24312A;
+      --ok: #6FDB86;
+      --warn: #E3B24A;
+      --danger: #F0806A;
+      --chip-get: #8FC0EA;
+      --chip-get-soft: #1B2E3D;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10140F;
+    --surface: #171D19;
+    --surface-alt: #1D2420;
+    --ink: #E7EEE9;
+    --ink-muted: #9FADA4;
+    --line: #2B332D;
+    --accent: #6FDBB3;
+    --accent-strong: #9AF0CE;
+    --accent-soft: #1B362C;
+    --code-bg: #0A0F0C;
+    --code-ink: #D8F3E4;
+    --code-line: #24312A;
+    --ok: #6FDB86;
+    --warn: #E3B24A;
+    --danger: #F0806A;
+    --chip-get: #8FC0EA;
+    --chip-get-soft: #1B2E3D;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+  }
+  h1, h2, h3 { text-wrap: balance; font-weight: 600; color: var(--ink); }
+  h1, h2 {
+    font-family: Iowan Old Style, Palatino Linotype, Palatino, Georgia, "Times New Roman", serif;
+  }
+  h3, h4 { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  p { max-width: 70ch; }
+  a { color: var(--accent-strong); }
+  code, pre, kbd, .mono { font-family: ui-monospace, SFMono-Regular, "IBM Plex Mono", Menlo, Consolas, monospace; }
+  code { background: var(--surface-alt); padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.88em; }
+
+  .eyebrow {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-weight: 700;
+    color: var(--accent-strong);
+    margin: 0 0 0.5rem;
+  }
+
+  .page {
+    display: grid;
+    grid-template-columns: 232px minmax(0, 820px);
+    gap: 56px;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 44px 32px 120px;
+  }
+
+  header.masthead {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-bottom: 32px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  header.masthead h1 { font-size: clamp(1.9rem, 1.5rem + 1.4vw, 2.5rem); margin: 0; letter-spacing: -0.01em; }
+  header.masthead .dek { margin: 0; max-width: 62ch; color: var(--ink-muted); font-size: 1.05rem; }
+  .stack-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .stack-chips span {
+    font-size: 0.78rem;
+    font-family: ui-monospace, SFMono-Regular, "IBM Plex Mono", Menlo, Consolas, monospace;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--surface-alt);
+    color: var(--ink-muted);
+    border: 1px solid var(--line);
+  }
+
+  nav.toc {
+    position: sticky;
+    top: 28px;
+    align-self: start;
+    font-size: 0.9rem;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  nav.toc li a {
+    display: block;
+    padding: 6px 10px;
+    border-radius: 6px;
+    color: var(--ink-muted);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    nav.toc li a { transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+  }
+  nav.toc li a:hover { background: var(--surface-alt); color: var(--ink); }
+  nav.toc li.section-label { margin-top: 14px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-muted); padding: 4px 10px; font-weight: 700; }
+
+  main { min-width: 0; display: flex; flex-direction: column; gap: 64px; }
+  section { scroll-margin-top: 24px; display: flex; flex-direction: column; gap: 18px; }
+  section h2 { font-size: 1.55rem; margin: 0; }
+  section > .eyebrow { margin-bottom: -8px; }
+
+  figure {
+    margin: 8px 0 0;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px 20px 16px;
+    box-shadow: var(--shadow);
+  }
+  figure .fig-scroll { overflow-x: auto; }
+  figure svg { max-width: 100%; height: auto; display: block; color: var(--ink); }
+  /* SVG <text> defaults to fill:black per spec, ignoring the inherited `color` —
+     force it to currentColor unless a label sets its own accent/status fill. */
+  figure svg text:not([fill]) { fill: currentColor; }
+  figcaption { margin-top: 12px; font-size: 0.9rem; color: var(--ink-muted); border-top: 1px solid var(--line); padding-top: 10px; }
+
+  .note {
+    display: flex;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: var(--accent-soft);
+    border: 1px solid var(--line);
+    font-size: 0.92rem;
+  }
+  .note .tag { font-weight: 700; color: var(--accent-strong); flex-shrink: 0; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 2px; }
+  .note p { margin: 0; max-width: none; }
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .card h4 { margin: 0; font-size: 0.95rem; font-family: ui-monospace, SFMono-Regular, monospace; color: var(--accent-strong); }
+  .card p { margin: 0; font-size: 0.88rem; color: var(--ink-muted); max-width: none; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th { background: var(--surface-alt); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-muted); }
+  tbody tr:last-child td { border-bottom: none; }
+  td code, th code { font-size: 0.85em; }
+  td.num, th.num { font-variant-numeric: tabular-nums; }
+
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-size: 0.83rem;
+    line-height: 1.55;
+    margin: 0;
+    border: 1px solid var(--code-line);
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+
+  .endpoint {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px 22px 22px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .endpoint-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .method {
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 6px;
+    letter-spacing: 0.03em;
+  }
+  .method.post { background: var(--accent-soft); color: var(--accent-strong); }
+  .method.get { background: var(--chip-get-soft); color: var(--chip-get); }
+  .method.delete { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+  .path { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 1rem; font-weight: 600; }
+  .auth-chip {
+    margin-left: auto;
+    font-size: 0.74rem;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--ink-muted);
+  }
+  .auth-chip.required { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }
+  .endpoint p.desc { margin: 0; font-size: 0.94rem; color: var(--ink-muted); }
+  .endpoint-block h5 { margin: 0 0 8px; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); font-weight: 700; }
+  .endpoint-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .endpoint-grid { grid-template-columns: 1fr; } }
+
+  .postman-box {
+    background: var(--surface-alt);
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 0.88rem;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .postman-box p { margin: 0; max-width: none; }
+
+  .status-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 0.82rem; font-weight: 600; }
+  .status-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .status-pill.completed::before { background: var(--ok); }
+  .status-pill.failed::before { background: var(--danger); }
+  .status-pill.processing::before { background: var(--warn); }
+
+  footer { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 20px; font-size: 0.85rem; color: var(--ink-muted); }
+
+  @media (max-width: 880px) {
+    .page { grid-template-columns: 1fr; padding: 32px 20px 96px; }
+    nav.toc { position: static; margin-bottom: 8px; }
+    nav.toc ol { flex-direction: row; flex-wrap: wrap; }
+    nav.toc li.section-label { display: none; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">Code understanding reference</p>
+    <h1>AI Knowledge Assistant — Architecture &amp; Data Flow</h1>
+    <p class="dek">A corporate RAG chat API: PDFs are parsed, chunked and embedded into pgvector; authenticated
+      users then ask questions that are answered strictly from that indexed content, with page-level citations.
+      This document traces how a request actually moves through the code, and how to exercise each endpoint
+      from Postman.</p>
+    <div class="stack-chips">
+      <span>Java 21</span><span>Spring Boot 4</span><span>Spring AI 2.0</span>
+      <span>Ollama · llama3.2 + nomic-embed-text</span><span>PostgreSQL + pgvector</span>
+      <span>JWT (stateless)</span><span>Flyway</span>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Table of contents">
+    <ol>
+      <li><a href="#overview">System map</a></li>
+      <li><a href="#security">Auth &amp; request security</a></li>
+      <li><a href="#ingestion">Document ingestion</a></li>
+      <li><a href="#chat-agent">Chat vs. Agent</a></li>
+      <li><a href="#decisions">Decisions worth knowing</a></li>
+      <li class="section-label">Reference</li>
+      <li><a href="#api">API &amp; Postman examples</a></li>
+      <li><a href="#schema">Schema</a></li>
+      <li><a href="#running">Running it locally</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <section id="overview">
+      <p class="eyebrow">01 · Orientation</p>
+      <h2>System map</h2>
+      <p>Every request enters through one Spring Boot process behind a JWT filter. That process is the only
+        thing that ever talks to Postgres/pgvector or Ollama — clients never call either directly, and the two
+        downstream systems never talk to each other.</p>
+      <figure>
+        <div class="fig-scroll">
+          <svg viewBox="0 0 760 210" role="img" aria-label="Client sends HTTPS requests with a bearer JWT to the Spring Boot API. The API reads and writes PostgreSQL with pgvector over JDBC, and calls Ollama over HTTP for chat completion and embeddings.">
+            <defs>
+              <marker id="arrow-sysmap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
+              </marker>
+            </defs>
+            <rect x="20" y="75" width="150" height="60" rx="8" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="95" y="100" text-anchor="middle" font-size="13" font-weight="600">Client</text>
+            <text x="95" y="118" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.7">Postman / SPA</text>
+
+            <rect x="300" y="70" width="170" height="70" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+            <text x="385" y="96" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent-strong)">Spring Boot API</text>
+            <text x="385" y="114" text-anchor="middle" font-size="10.5" fill="var(--accent-strong)" opacity="0.85">JwtFilter → Controllers</text>
+            <text x="385" y="128" text-anchor="middle" font-size="10.5" fill="var(--accent-strong)" opacity="0.85">→ Services</text>
+
+            <rect x="580" y="15" width="160" height="60" rx="8" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="660" y="41" text-anchor="middle" font-size="12.5" font-weight="600">PostgreSQL</text>
+            <text x="660" y="58" text-anchor="middle" font-size="10.5" opacity="0.7">+ pgvector extension</text>
+
+            <rect x="580" y="130" width="160" height="60" rx="8" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="660" y="153" text-anchor="middle" font-size="12.5" font-weight="600">Ollama</text>
+            <text x="660" y="170" text-anchor="middle" font-size="10" opacity="0.7">llama3.2 (chat)</text>
+            <text x="660" y="182" text-anchor="middle" font-size="10" opacity="0.7">nomic-embed-text (embed)</text>
+
+            <line x1="170" y1="103" x2="298" y2="103" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-sysmap)"></line>
+            <text x="234" y="92" text-anchor="middle" font-size="10.5" opacity="0.8">HTTPS + Bearer JWT</text>
+
+            <line x1="470" y1="95" x2="578" y2="55" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-sysmap)"></line>
+            <text x="527" y="65" text-anchor="middle" font-size="10.5" opacity="0.8">JDBC</text>
+
+            <line x1="470" y1="118" x2="578" y2="152" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-sysmap)"></line>
+            <text x="527" y="150" text-anchor="middle" font-size="10.5" opacity="0.8">HTTP</text>
+          </svg>
+        </div>
+        <figcaption>The API mediates everything: request auth, document storage, retrieval, and generation all pass
+          through it — Postgres and Ollama each see only what the API sends them.</figcaption>
+      </figure>
+    </section>
+
+    <section id="security">
+      <p class="eyebrow">02 · Every request</p>
+      <h2>Auth &amp; request security</h2>
+      <p>Auth is stateless: no sessions, no CSRF, a signed JWT carries identity. <code>/auth/register</code> and
+        <code>/auth/login</code> both end by minting a token; every other route requires one, verified fresh on
+        each call rather than against a session store.</p>
+      <figure>
+        <div class="fig-scroll">
+          <svg viewBox="0 0 800 300" role="img" aria-label="Login flow: client sends credentials to AuthService, which checks them via AuthenticationManager and UserRepository, then JwtService signs a token returned to the client. Every later request: client sends that token in the Authorization header, JwtFilter verifies it via JwtService and populates the SecurityContext before the controller runs.">
+            <defs>
+              <marker id="arrow-sec" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
+              </marker>
+            </defs>
+
+            <text x="20" y="26" font-size="11" font-weight="700" letter-spacing="0.04em" fill="var(--accent-strong)">ONCE — POST /auth/login</text>
+            <rect x="20" y="38" width="120" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="80" y="68" text-anchor="middle" font-size="12" font-weight="600">Client</text>
+            <rect x="200" y="38" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="275" y="62" text-anchor="middle" font-size="12" font-weight="600">AuthService</text>
+            <text x="275" y="78" text-anchor="middle" font-size="9.5" opacity="0.7">AuthenticationManager</text>
+            <rect x="410" y="38" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="485" y="62" text-anchor="middle" font-size="12" font-weight="600">JwtService</text>
+            <text x="485" y="78" text-anchor="middle" font-size="9.5" opacity="0.7">signs HS256 token</text>
+            <rect x="620" y="38" width="150" height="52" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+            <text x="695" y="62" text-anchor="middle" font-size="12" font-weight="700" fill="var(--accent-strong)">signed JWT</text>
+            <text x="695" y="78" text-anchor="middle" font-size="9.5" fill="var(--accent-strong)" opacity="0.85">sub=email, roles</text>
+
+            <line x1="140" y1="64" x2="198" y2="64" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-sec)"></line>
+            <line x1="350" y1="64" x2="408" y2="64" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-sec)"></line>
+            <line x1="560" y1="64" x2="618" y2="64" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-sec)"></line>
+
+            <line x1="695" y1="90" x2="695" y2="150" stroke="currentColor" stroke-width="1.3" stroke-dasharray="4 4"></line>
+            <line x1="695" y1="150" x2="80" y2="150" stroke="currentColor" stroke-width="1.3" stroke-dasharray="4 4" marker-end="url(#arrow-sec)"></line>
+            <text x="390" y="142" text-anchor="middle" font-size="10" opacity="0.75">client stores token, replays it as Authorization: Bearer &lt;token&gt;</text>
+
+            <text x="20" y="196" font-size="11" font-weight="700" letter-spacing="0.04em" fill="var(--accent-strong)">EVERY CALL AFTER — any protected route</text>
+            <rect x="20" y="208" width="120" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="80" y="234" text-anchor="middle" font-size="12" font-weight="600">Client</text>
+            <text x="80" y="250" text-anchor="middle" font-size="9.5" opacity="0.7">+ Bearer token</text>
+            <rect x="200" y="208" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="275" y="234" text-anchor="middle" font-size="12" font-weight="600">JwtFilter</text>
+            <text x="275" y="250" text-anchor="middle" font-size="9.5" opacity="0.7">verifies via JwtService</text>
+            <rect x="410" y="208" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="485" y="234" text-anchor="middle" font-size="12" font-weight="600">SecurityContext</text>
+            <text x="485" y="250" text-anchor="middle" font-size="9.5" opacity="0.7">principal + ROLE_*</text>
+            <rect x="620" y="208" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="695" y="234" text-anchor="middle" font-size="12" font-weight="600">Controller</text>
+            <text x="695" y="250" text-anchor="middle" font-size="9.5" opacity="0.7">@AuthenticationPrincipal</text>
+
+            <line x1="140" y1="234" x2="198" y2="234" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-sec)"></line>
+            <line x1="350" y1="234" x2="408" y2="234" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-sec)"></line>
+            <line x1="560" y1="234" x2="618" y2="234" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-sec)"></line>
+          </svg>
+        </div>
+        <figcaption>Login happens once per session lifetime; verification happens on every single request —
+          there is no server-side session to short-circuit it.</figcaption>
+      </figure>
+      <div class="cards">
+        <div class="card">
+          <h4>Public routes</h4>
+          <p><code>/auth/**</code>, <code>/health/**</code>, <code>/actuator/**</code>, <code>/swagger-ui/**</code>,
+            <code>/v3/api-docs/**</code>, and any <code>OPTIONS</code> request — everything else requires a
+            valid token (<code>SecurityConfig</code>).</p>
+        </div>
+        <div class="card">
+          <h4>Roles: USER, ADMIN</h4>
+          <p><code>/auth/register</code> always creates role <code>USER</code> — nothing in the API promotes a
+            user to <code>ADMIN</code>. See the Postman note on <code>DELETE /documents/{id}</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="ingestion">
+      <p class="eyebrow">03 · Building the index</p>
+      <h2>Document ingestion — <code>POST /documents/upload</code></h2>
+      <p>Upload runs synchronously inside the HTTP request — there's no job queue yet, so a large PDF simply
+        makes the call take longer. The raw bytes are stored first regardless of outcome; only after that does
+        parsing, chunking and embedding run.</p>
+      <figure>
+        <div class="fig-scroll">
+          <svg viewBox="0 0 900 280" role="img" aria-label="DocumentController receives a PDF and hands it to DocumentService, which saves a PROCESSING row, stores the raw bytes via DocumentStorageService, extracts text per page with PdfParserService, splits it into per-page chunks with DocumentChunker, and embeds and indexes those chunks into pgvector via VectorStoreService. On success the document row becomes COMPLETED and a 201 response is returned; on failure it becomes FAILED and the request fails with a 422 error instead.">
+            <defs>
+              <marker id="arrow-ing" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
+              </marker>
+            </defs>
+
+            <rect x="10" y="90" width="120" height="56" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="70" y="114" text-anchor="middle" font-size="12" font-weight="600">Client</text>
+            <text x="70" y="130" text-anchor="middle" font-size="9.5" opacity="0.7">multipart PDF</text>
+
+            <rect x="170" y="90" width="130" height="56" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="235" y="114" text-anchor="middle" font-size="12" font-weight="600">Document</text>
+            <text x="235" y="130" text-anchor="middle" font-size="12" font-weight="600">Controller</text>
+
+            <rect x="340" y="10" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="415" y="32" text-anchor="middle" font-size="11.5" font-weight="600">DocumentStorage</text>
+            <text x="415" y="47" text-anchor="middle" font-size="9.5" opacity="0.7">writes raw bytes to disk</text>
+
+            <rect x="340" y="82" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="415" y="104" text-anchor="middle" font-size="11.5" font-weight="600">PdfParserService</text>
+            <text x="415" y="119" text-anchor="middle" font-size="9.5" opacity="0.7">extracts text per page</text>
+
+            <rect x="340" y="154" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="415" y="176" text-anchor="middle" font-size="11.5" font-weight="600">DocumentChunker</text>
+            <text x="415" y="191" text-anchor="middle" font-size="9.5" opacity="0.7">splits within each page</text>
+
+            <rect x="340" y="226" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="415" y="248" text-anchor="middle" font-size="11.5" font-weight="600">VectorStoreService</text>
+            <text x="415" y="263" text-anchor="middle" font-size="9.5" opacity="0.7">embeds + indexes chunks</text>
+
+            <rect x="540" y="118" width="150" height="60" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="615" y="142" text-anchor="middle" font-size="12" font-weight="600">pgvector</text>
+            <text x="615" y="158" text-anchor="middle" font-size="9.5" opacity="0.7">document_chunks</text>
+            <text x="615" y="171" text-anchor="middle" font-size="9.5" opacity="0.7">status: PROCESSING</text>
+
+            <polygon points="750,90 830,148 750,206 670,148" fill="none" stroke="currentColor" stroke-width="1.4"></polygon>
+            <text x="750" y="144" text-anchor="middle" font-size="10.5" font-weight="600">indexed</text>
+            <text x="750" y="158" text-anchor="middle" font-size="10.5" font-weight="600">OK?</text>
+
+            <rect x="770" y="10" width="120" height="50" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+            <text x="830" y="30" text-anchor="middle" font-size="11" font-weight="700" fill="var(--accent-strong)">COMPLETED</text>
+            <text x="830" y="45" text-anchor="middle" font-size="9.5" fill="var(--accent-strong)" opacity="0.85">201 + DocumentResponse</text>
+
+            <rect x="770" y="236" width="120" height="50" rx="7" fill="none" stroke="var(--danger)" stroke-width="1.5"></rect>
+            <text x="830" y="256" text-anchor="middle" font-size="11" font-weight="700" fill="var(--danger)">FAILED</text>
+            <text x="830" y="271" text-anchor="middle" font-size="9.5" fill="var(--danger)" opacity="0.9">422 ErrorResponse</text>
+
+            <line x1="130" y1="118" x2="168" y2="118" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-ing)"></line>
+            <line x1="300" y1="105" x2="338" y2="55" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-ing)"></line>
+            <text x="322" y="80" font-size="9.5" opacity="0.7">1</text>
+            <line x1="415" y1="62" x2="415" y2="80" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-ing)"></line>
+            <text x="428" y="74" font-size="9.5" opacity="0.7">2</text>
+            <line x1="415" y1="134" x2="415" y2="152" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-ing)"></line>
+            <text x="428" y="146" font-size="9.5" opacity="0.7">3</text>
+            <line x1="415" y1="206" x2="415" y2="224" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-ing)"></line>
+            <text x="428" y="218" font-size="9.5" opacity="0.7">4</text>
+            <line x1="490" y1="252" x2="538" y2="165" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-ing)"></line>
+
+            <line x1="690" y1="148" x2="748" y2="148" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrow-ing)"></line>
+            <line x1="778" y1="120" x2="815" y2="60" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#arrow-ing)"></line>
+            <text x="820" y="95" text-anchor="middle" font-size="9.5" fill="var(--accent-strong)">yes</text>
+            <line x1="778" y1="178" x2="815" y2="234" stroke="var(--danger)" stroke-width="1.5" marker-end="url(#arrow-ing)"></line>
+            <text x="820" y="212" text-anchor="middle" font-size="9.5" fill="var(--danger)">no</text>
+          </svg>
+        </div>
+        <figcaption>Steps 1–4 run inside one try block in <code>DocumentService.upload</code>; a
+          <code>DocumentProcessingException</code> anywhere in it flips the row to <code>FAILED</code> and
+          re-throws, so the client sees an error, never a <code>DocumentResponse</code> with
+          <code>status: "FAILED"</code>.</figcaption>
+      </figure>
+      <div class="note">
+        <span class="tag">Worth knowing</span>
+        <p>Because this all happens inside one request, a concurrent <code>GET /documents</code> from another
+          call can genuinely observe the row in <span class="status-pill processing">processing</span> — it
+          isn't a dead status, just a narrow window.</p>
+      </div>
+    </section>
+
+    <section id="chat-agent">
+      <p class="eyebrow">04 · Answering a question</p>
+      <h2><code>/chat</code> vs. <code>/agent</code> — two strategies, one index</h2>
+      <p>Both endpoints take the same <code>{ message, conversationId }</code> shape and both ground answers in
+        the same pgvector index and the same conversation memory. They differ in exactly one place: who decides
+        when to retrieve.</p>
+      <figure>
+        <div class="fig-scroll">
+          <svg viewBox="0 0 900 470" role="img" aria-label="Chat compared to Agent. Chat: RagService always calls ContextRetriever exactly once, folds the result into the system prompt via PromptAugmentationService, then calls the chat model once, returning an explicit sources list. Agent: AgentService hands the question straight to a tool-equipped chat client; the model itself decides whether and how many times to call the searchDocuments or listDocuments tools before answering, so there is no single retrieval to attribute as sources. Both share the same ChatMemory, persisted to the chat_history table in Postgres.">
+            <defs>
+              <marker id="arrow-cmp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
+              </marker>
+            </defs>
+
+            <text x="20" y="24" font-size="12" font-weight="700" fill="var(--ink)">POST /chat</text>
+            <text x="20" y="40" font-size="10" opacity="0.7">ChatService → RagService — fixed pipeline</text>
+            <rect x="20" y="54" width="380" height="48" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="210" y="83" text-anchor="middle" font-size="11.5" font-weight="600">ContextRetriever</text>
+            <text x="340" y="83" text-anchor="middle" font-size="9.5" opacity="0.6">(called once)</text>
+
+            <rect x="20" y="126" width="380" height="60" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="210" y="150" text-anchor="middle" font-size="11.5" font-weight="600">VectorStoreService.search</text>
+            <text x="210" y="166" text-anchor="middle" font-size="9.5" opacity="0.7">over-fetch top-k × 4, similarity ≥ 0.5</text>
+            <text x="210" y="179" text-anchor="middle" font-size="9.5" opacity="0.7">→ ReRanker blends vector + lexical score</text>
+
+            <rect x="20" y="210" width="380" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="210" y="232" text-anchor="middle" font-size="11.5" font-weight="600">PromptAugmentationService</text>
+            <text x="210" y="248" text-anchor="middle" font-size="9.5" opacity="0.7">chunks → system message, question stays raw</text>
+
+            <rect x="20" y="286" width="380" height="52" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+            <text x="210" y="308" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--accent-strong)">ChatClient → Ollama (1 call)</text>
+            <text x="210" y="324" text-anchor="middle" font-size="9.5" fill="var(--accent-strong)" opacity="0.85">llama3.2, temperature 0.3</text>
+
+            <rect x="20" y="362" width="380" height="46" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="210" y="390" text-anchor="middle" font-size="11.5" font-weight="600">answer + explicit sources[]</text>
+
+            <line x1="210" y1="102" x2="210" y2="124" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-cmp)"></line>
+            <line x1="210" y1="186" x2="210" y2="208" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-cmp)"></line>
+            <line x1="210" y1="262" x2="210" y2="284" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-cmp)"></line>
+            <line x1="210" y1="338" x2="210" y2="360" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-cmp)"></line>
+
+            <text x="500" y="24" font-size="12" font-weight="700" fill="var(--ink)">POST /agent</text>
+            <text x="500" y="40" font-size="10" opacity="0.7">AgentService — model-driven</text>
+            <rect x="500" y="54" width="380" height="52" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+            <text x="690" y="76" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--accent-strong)">agentChatClient → Ollama</text>
+            <text x="690" y="92" text-anchor="middle" font-size="9.5" fill="var(--accent-strong)" opacity="0.85">question handed over as-is, with tools attached</text>
+
+            <rect x="540" y="140" width="300" height="150" rx="10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 4"></rect>
+            <text x="690" y="158" text-anchor="middle" font-size="10" font-weight="700" opacity="0.75">model decides, 0..n times</text>
+            <rect x="565" y="172" width="240" height="46" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"></rect>
+            <text x="685" y="192" text-anchor="middle" font-size="10.5" font-weight="600">searchDocuments(query)</text>
+            <text x="685" y="206" text-anchor="middle" font-size="9" opacity="0.65">→ ContextRetriever, same code path</text>
+            <rect x="565" y="228" width="240" height="46" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"></rect>
+            <text x="685" y="248" text-anchor="middle" font-size="10.5" font-weight="600">listDocuments()</text>
+            <text x="685" y="262" text-anchor="middle" font-size="9" opacity="0.65">→ fixed DB listing, no free-form SQL</text>
+
+            <line x1="690" y1="106" x2="690" y2="138" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-cmp)"></line>
+            <path d="M 690 290 C 690 315, 690 315, 690 336" fill="none" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-cmp)"></path>
+
+            <rect x="500" y="362" width="380" height="46" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="690" y="384" text-anchor="middle" font-size="11.5" font-weight="600">answer, sources[] always empty</text>
+            <text x="690" y="398" text-anchor="middle" font-size="9" opacity="0.65">citations are inline text instead</text>
+
+            <rect x="20" y="430" width="860" height="34" rx="7" fill="var(--surface-alt)" stroke="var(--line)" stroke-width="1"></rect>
+            <text x="450" y="452" text-anchor="middle" font-size="10.5" font-weight="600">shared: ChatMemory (20-msg window) → JdbcChatHistoryRepository → chat_history (Postgres)</text>
+            <line x1="210" y1="408" x2="300" y2="430" stroke="currentColor" stroke-width="1" opacity="0.6"></line>
+            <line x1="690" y1="408" x2="600" y2="430" stroke="currentColor" stroke-width="1" opacity="0.6"></line>
+          </svg>
+        </div>
+        <figcaption><code>/chat</code> retrieves exactly once, always, before the model ever runs — predictable
+          latency, and a sources list the caller can render directly. <code>/agent</code> hands the model the
+          same <code>searchDocuments</code> capability as a tool it can call repeatedly (or not at all) — better
+          for questions one retrieval can't answer, at the cost of extra round-trips and no attributable
+          sources list.</figcaption>
+      </figure>
+    </section>
+
+    <section id="decisions">
+      <p class="eyebrow">05 · Field notes</p>
+      <h2>Decisions worth knowing before you change this code</h2>
+      <div class="cards">
+        <div class="card">
+          <h4>Context → system message, not the question</h4>
+          <p><code>MessageChatMemoryAdvisor</code> persists only the last user message, so keeping retrieved
+            chunks out of it means history stores the question asked, not a copy of every chunk retrieved for
+            it.</p>
+        </div>
+        <div class="card">
+          <h4>chat_history ≠ Spring AI's shipped schema</h4>
+          <p>Spring AI's own table keys on a single 36-char <code>conversation_id</code>. This app's memory key
+            is <code>"&lt;userId&gt;:&lt;conversationId&gt;"</code> (73 chars), so <code>JdbcChatHistoryRepository</code>
+            unpacks it into two real UUID columns instead.</p>
+        </div>
+        <div class="card">
+          <h4>Chunking never crosses a page</h4>
+          <p><code>DocumentChunker</code> splits each PDF page independently, so every chunk — and every
+            citation — can be attributed to exactly one page. Costs slightly undersized chunks at page ends.</p>
+        </div>
+        <div class="card">
+          <h4>No "run this SQL" tool</h4>
+          <p><code>listDocuments()</code> is a fixed, parameterless listing. A tool that accepted model-supplied
+            SQL would hand an injection primitive to whatever text a user can talk the model into emitting.</p>
+        </div>
+        <div class="card">
+          <h4>Retrieval over-fetches, then re-ranks</h4>
+          <p>Vector search alone decides on embedding proximity — anything just outside <code>top-k</code> is
+            lost. Pulling <code>top-k × overfetch-factor</code> candidates and blending in lexical overlap
+            (<code>ReRanker</code>) catches exact terms — product names, error codes — that embed close to,
+            but not on, the right chunk.</p>
+        </div>
+        <div class="card">
+          <h4>pgvector image, not stock postgres</h4>
+          <p><code>docker-compose.yml</code> pins <code>pgvector/pgvector:pg16</code>. Plain <code>postgres:16</code>
+            can't satisfy <code>V2__create_extensions.sql</code>'s <code>CREATE EXTENSION vector</code> — this
+            broke the project once already.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="api">
+      <p class="eyebrow">06 · Reference</p>
+      <h2>API &amp; Postman examples</h2>
+      <div class="postman-box">
+        <p><strong>Environment:</strong> set <code>baseUrl</code> = <code>http://localhost:8080</code> and an
+          empty <code>token</code> variable.</p>
+        <p><strong>Auto-capture the token:</strong> on the register/login request's <em>Tests</em> tab —</p>
+        <pre><code>pm.environment.set("token", pm.response.json().token);</code></pre>
+        <p>Then set every other request's <em>Authorization</em> tab to <strong>Bearer Token</strong> →
+          <code>{{token}}</code>.</p>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">{{baseUrl}}/auth/register</span>
+          <span class="auth-chip">public</span>
+        </div>
+        <p class="desc">Creates a user (always role <code>USER</code>), hashes the password with BCrypt, and
+          returns a token immediately so the frontend can skip a second login call.</p>
+        <div class="endpoint-grid">
+          <div class="endpoint-block">
+            <h5>Body — raw JSON</h5>
+            <pre><code>{
+  "name": "Ada Lovelace",
+  "email": "ada@example.com",
+  "password": "correct-horse-battery"
+}</code></pre>
+          </div>
+          <div class="endpoint-block">
+            <h5>201 — response</h5>
+            <pre><code>{
+  "token": "eyJhbGciOiJIUzI1NiJ9...",
+  "expiresIn": 86400000,
+  "name": "Ada Lovelace",
+  "email": "ada@example.com",
+  "role": "USER"
+}</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">{{baseUrl}}/auth/login</span>
+          <span class="auth-chip">public</span>
+        </div>
+        <p class="desc">Same response shape as register. Wrong credentials → <code>401</code> with
+          <code>"Invalid email or password"</code>.</p>
+        <div class="endpoint-grid">
+          <div class="endpoint-block">
+            <h5>Body — raw JSON</h5>
+            <pre><code>{
+  "email": "ada@example.com",
+  "password": "correct-horse-battery"
+}</code></pre>
+          </div>
+          <div class="endpoint-block">
+            <h5>400 — validation error shape</h5>
+            <pre><code>{
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Validation failed",
+  "path": "/auth/register",
+  "details": [
+    "password: Password must be at least 8 characters"
+  ]
+}</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">{{baseUrl}}/documents/upload</span>
+          <span class="auth-chip required">bearer required</span>
+        </div>
+        <p class="desc">Body type <strong>form-data</strong>, key <code>file</code> (type: File), a PDF only —
+          anything else is a <code>400</code>. Runs synchronously: the response only arrives once
+          parse+chunk+embed has finished. Max size 20 MB (<code>413</code> above that).</p>
+        <div class="endpoint-grid">
+          <div class="endpoint-block">
+            <h5>Postman body tab</h5>
+            <pre><code>form-data
+  file: [Select File] → some-policy.pdf</code></pre>
+          </div>
+          <div class="endpoint-block">
+            <h5>201 — response</h5>
+            <pre><code>{
+  "id": "3f2a9c1e-...",
+  "filename": "some-policy.pdf",
+  "contentType": "application/pdf",
+  "sizeBytes": 184320,
+  "status": "COMPLETED",
+  "uploadedBy": "ada@example.com",
+  "createdAt": "2026-08-10T14:02:11Z"
+}</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">{{baseUrl}}/documents</span>
+          <span class="auth-chip required">bearer required</span>
+        </div>
+        <p class="desc">Lists every document, newest first, regardless of who uploaded it.</p>
+        <div class="endpoint-block">
+          <h5>200 — response</h5>
+          <pre><code>[
+  {
+    "id": "3f2a9c1e-...",
+    "filename": "some-policy.pdf",
+    "contentType": "application/pdf",
+    "sizeBytes": 184320,
+    "status": "COMPLETED",
+    "uploadedBy": "ada@example.com",
+    "createdAt": "2026-08-10T14:02:11Z"
+  }
+]</code></pre>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span>
+          <span class="path">{{baseUrl}}/documents/{id}</span>
+          <span class="auth-chip required">ADMIN role required</span>
+        </div>
+        <p class="desc">Removes the document row, its stored file, and every indexed chunk. Returns
+          <code>204</code> with no body; <code>403</code> if the caller isn't <code>ADMIN</code>.</p>
+        <div class="note">
+          <span class="tag">Postman setup</span>
+          <p>Registration only ever creates <code>USER</code>. To test this endpoint, promote a user directly:
+            <code>UPDATE users SET role = 'ADMIN' WHERE email = 'ada@example.com';</code> — then log in again so
+            the new token carries <code>ROLE_ADMIN</code>.</p>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">{{baseUrl}}/chat</span>
+          <span class="auth-chip required">bearer required</span>
+        </div>
+        <p class="desc">Omit <code>conversationId</code> to start a new conversation; pass back the value from
+          the response to continue one with memory of prior turns (last 20 messages).</p>
+        <div class="endpoint-grid">
+          <div class="endpoint-block">
+            <h5>Body — raw JSON</h5>
+            <pre><code>{
+  "message": "What does the security policy say about VPN access?",
+  "conversationId": null
+}</code></pre>
+          </div>
+          <div class="endpoint-block">
+            <h5>200 — response</h5>
+            <pre><code>{
+  "answer": "According to 'Security Policy.pdf' (page 4), ...",
+  "conversationId": "9b6e1d2a-...",
+  "sources": [
+    { "filename": "Security Policy.pdf", "page": 4 }
+  ]
+}</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">{{baseUrl}}/agent</span>
+          <span class="auth-chip required">bearer required</span>
+        </div>
+        <p class="desc">Identical request/response shape to <code>/chat</code>. Expect higher, more variable
+          latency — the model may call <code>searchDocuments</code> more than once before answering.
+          <code>sources</code> is always <code>[]</code>; citations appear inline in <code>answer</code> instead.</p>
+        <div class="endpoint-grid">
+          <div class="endpoint-block">
+            <h5>Body — raw JSON</h5>
+            <pre><code>{
+  "message": "Compare what the security policy and the onboarding guide say about laptops",
+  "conversationId": null
+}</code></pre>
+          </div>
+          <div class="endpoint-block">
+            <h5>200 — response</h5>
+            <pre><code>{
+  "answer": "The Security Policy (page 2) requires disk encryption... The Onboarding Guide (page 7) says laptops are issued on day one...",
+  "conversationId": "c14f7a08-...",
+  "sources": []
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="schema">
+      <p class="eyebrow">07 · Reference</p>
+      <h2>Schema, at a glance</h2>
+      <p>Five Flyway migrations, applied in order on every boot (<code>V1</code>–<code>V5</code>).</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Table</th><th>Key columns</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>users</code></td>
+              <td><code>email</code> (unique), <code>password</code> (BCrypt), <code>role</code></td>
+              <td>Auth identity. Indexed on <code>email</code> for login lookups.</td>
+            </tr>
+            <tr>
+              <td><code>documents</code></td>
+              <td><code>status</code>, <code>uploaded_by → users.id</code></td>
+              <td>One row per uploaded PDF; lifecycle <code>PROCESSING → COMPLETED / FAILED</code>.</td>
+            </tr>
+            <tr>
+              <td><code>document_chunks</code></td>
+              <td><code>embedding vector(768)</code>, <code>metadata json</code></td>
+              <td>pgvector's own schema (Flyway-owned, not auto-initialized). HNSW index, cosine ops. 768-dim
+                matches <code>nomic-embed-text</code>.</td>
+            </tr>
+            <tr>
+              <td><code>chat_history</code></td>
+              <td><code>user_id</code>, <code>conversation_id</code>, <code>message_type</code></td>
+              <td>Backs <code>ChatMemory</code> persistence. Two real UUID columns (not Spring AI's stock
+                schema) so a user's conversations can be listed and cascade-deleted.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="running">
+      <p class="eyebrow">08 · Reference</p>
+      <h2>Running it locally</h2>
+      <pre><code># Postgres+pgvector, Ollama, and a one-shot model pull
+docker compose up -d
+
+# App on :8080 — Flyway applies V1-V5 on boot
+./mvnw spring-boot:run
+
+# ...or run the backend in a container too
+docker compose --profile full up</code></pre>
+      <p><code>docker compose up</code> deliberately starts only the dependencies — the backend stays behind
+        the <code>full</code> profile so the usual dev loop (run from the IDE) doesn't rebuild an image every
+        time.</p>
+    </section>
+
+  </main>
+
+  <footer>
+    Generated from the current state of <code>src/main/java/com/rensilver/ai_knowledge_assistant</code> — for
+    the authoritative source, read the code linked above each diagram.
+  </footer>
+
+</div>

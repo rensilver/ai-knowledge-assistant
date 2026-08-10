@@ -9,12 +9,12 @@ import java.util.UUID;
  * @param answer         the grounded answer produced by the LLM
  * @param conversationId echo this back on the next request to continue the
  *                       same conversation with memory of this turn
- * @param sources        filenames of the documents the answer was grounded
- *                       in (empty if no relevant context was found)
+ * @param sources        document pages the answer was grounded in (empty if
+ *                       no relevant context was found)
  */
 public record ChatResponse(
         String answer,
         UUID conversationId,
-        List<String> sources
+        List<SourceReference> sources
 ) {
 }

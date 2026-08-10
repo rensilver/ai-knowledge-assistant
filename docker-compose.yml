@@ -1,0 +1,82 @@
+services:
+
+  # Plain `postgres:16` does NOT ship the pgvector extension, so
+  # V2__create_extensions.sql fails on `CREATE EXTENSION vector`.
+  # pgvector/pgvector:pg16 is postgres:16 with the extension compiled in.
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aika-postgres
+    environment:
+      POSTGRES_DB: ai-knowledge-assistant
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` alone returns healthy before the DB accepts real queries
+      # on first boot (initdb restarts the server), so run an actual query.
+      test: ["CMD-SHELL", "psql -U postgres -d ai-knowledge-assistant -c 'SELECT 1' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aika-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # One-shot: pulls the two models the app needs (chat + embeddings) into the
+  # shared ollama volume, then exits. Without this the first /chat or upload
+  # call fails with a 404 "model not found" from Ollama.
+  ollama-models:
+    image: ollama/ollama:latest
+    container_name: aika-ollama-models
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "ollama pull llama3.2 && ollama pull nomic-embed-text"]
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: aika-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama-models:
+        condition: service_completed_successfully
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ai-knowledge-assistant
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
+      # Override in any non-local environment: openssl rand -base64 32
+      JWT_SECRET: ${JWT_SECRET:-Q/BAIPFSqVcGdm0ZAt65WJvx5oigSTrFJuash9NaZm8=}
+      APP_DOCUMENT_UPLOAD_DIR: /var/lib/aika/uploads
+    ports:
+      - "8080:8080"
+    volumes:
+      - backend-uploads:/var/lib/aika/uploads
+    # Started only via `docker compose --profile full up`, so the default
+    # `docker compose up` gives just the dependencies for running the app
+    # from the IDE/CLI (the common dev loop).
+    profiles: ["full"]
+
+volumes:
+  postgres-data:
+  ollama-data:
+  backend-uploads:

@@ -85,8 +85,8 @@ public class DocumentService {
         storageService.store(entity.getId(), bytes);
 
         try {
-            String text = pdfParserService.extractText(bytes);
-            List<Document> chunks = documentChunker.chunk(entity.getId(), entity.getFilename(), text);
+            List<PdfPage> pages = pdfParserService.extractPages(bytes);
+            List<Document> chunks = documentChunker.chunk(entity.getId(), entity.getFilename(), pages);
             vectorStoreService.index(chunks);
 
             entity.setStatus(DocumentStatus.COMPLETED);

@@ -32,11 +32,20 @@ app:
   cors:
     allowed-origins: http://localhost:3000
   jwt:
-    secret: <base64-encoded, 256-bit+ key>
+    # Dev-only default so the app runs out of the box. JwtService Base64-decodes
+    # this and requires >= 256 bits (HS256). Override in every real environment:
+    #   export JWT_SECRET="$(openssl rand -base64 32)"
+    secret: ${JWT_SECRET:Q/BAIPFSqVcGdm0ZAt65WJvx5oigSTrFJuash9NaZm8=}
     expiration-ms: 86400000
   document:
     upload-dir: ./uploads
   rag:
     chunk-size: 800
+    # Chunks actually placed in the prompt, after re-ranking.
     top-k: 5
     similarity-threshold: 0.5
+    # Candidates pulled from pgvector per query = top-k * overfetch-factor.
+    # Higher gives the re-ranker more to choose from, at a larger index scan.
+    overfetch-factor: 4
+    # Re-rank blend: 1.0 = pure vector similarity, 0.0 = pure keyword overlap.
+    vector-weight: 0.75

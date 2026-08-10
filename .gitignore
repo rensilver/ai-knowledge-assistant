@@ -33,3 +33,6 @@ build/
 .vscode/
 
 _backup/
+### Application data ###
+# Uploaded PDFs (app.document.upload-dir) — runtime data, not source
+uploads/

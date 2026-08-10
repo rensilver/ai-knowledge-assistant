@@ -1,10 +1,10 @@
 package com.rensilver.ai_knowledge_assistant.config;
 
+import com.rensilver.ai_knowledge_assistant.agent.KnowledgeBaseTools;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
-import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.ollama.OllamaChatModel;
@@ -13,6 +13,7 @@ import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 /**
  * Central configuration for Ollama-backed AI models used across the assistant.
@@ -59,22 +60,13 @@ public class OllamaConfig {
     }
 
     /**
-     * Raw storage for conversation messages. In-memory for now (backed by a
-     * ConcurrentHashMap) — swap for {@code JdbcChatMemoryRepository} once V2
-     * (persistent conversation history) is implemented, so messages survive
-     * restarts and are shared across instances. When you do, back it with the
-     * existing {@code chat_history} table rather than letting Spring AI own
-     * a second, parallel history table.
-     */
-    @Bean
-    public ChatMemoryRepository chatMemoryRepository() {
-        return new InMemoryChatMemoryRepository();
-    }
-
-    /**
      * Policy layer on top of the repository: keeps a bounded window of the
      * most recent messages per conversation so prompts don't grow unbounded
      * (and blow past numCtx) as a conversation gets long.
+     *
+     * @param chatMemoryRepository {@code JdbcChatHistoryRepository} — persists
+     *                             the window to {@code chat_history} so
+     *                             conversations survive restarts
      */
     @Bean
     public ChatMemory chatMemory(ChatMemoryRepository chatMemoryRepository) {
@@ -93,6 +85,7 @@ public class OllamaConfig {
      * @param chatMemory conversation memory store
      */
     @Bean
+    @Primary
     public ChatClient chatClient(ChatModel chatModel, ChatMemory chatMemory) {
         return ChatClient.builder(chatModel)
                 .defaultOptions(newChatOptionsBuilder())
@@ -102,6 +95,43 @@ public class OllamaConfig {
                         the retrieved document context provided to you. If the context
                         does not contain the answer, say so explicitly instead of guessing.
                         Always cite the source document name when possible.
+                        """)
+                .build();
+    }
+
+    /**
+     * ChatClient for the V4 agent endpoint (see {@code AgentService}): same
+     * model and memory, but with {@link KnowledgeBaseTools} attached so the
+     * model can decide to search the knowledge base itself instead of being
+     * handed a fixed set of retrieved chunks.
+     *
+     * <p>Kept as a separate bean rather than adding tools to the primary
+     * client, so the plain {@code /chat} path stays a predictable single
+     * round-trip with no tool-call latency.
+     */
+    @Bean
+    public ChatClient agentChatClient(
+            ChatModel chatModel,
+            ChatMemory chatMemory,
+            KnowledgeBaseTools knowledgeBaseTools
+    ) {
+        return ChatClient.builder(chatModel)
+                .defaultOptions(newChatOptionsBuilder())
+                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
+                .defaultTools(knowledgeBaseTools)
+                .defaultSystem("""
+                        You are a corporate knowledge assistant with access to the
+                        company's document knowledge base through tools.
+
+                        Use the searchDocuments tool to answer any question about what
+                        company documents say — search more than once with different
+                        wording if the first result is unhelpful. Use listDocuments for
+                        questions about which documents exist rather than their contents.
+
+                        Answer only from what the tools return. If they return nothing
+                        relevant, say the knowledge base does not cover it rather than
+                        answering from general knowledge. Cite the document name and
+                        page exactly as the tool labels them.
                         """)
                 .build();
     }
