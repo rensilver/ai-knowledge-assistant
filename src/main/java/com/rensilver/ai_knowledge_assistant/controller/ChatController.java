@@ -39,8 +39,7 @@ public class ChatController {
                     content = @Content(schema = @Schema(implementation = ChatResponse.class))),
             @ApiResponse(responseCode = "400", description = "Validation failed",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token (no response body)")
     })
     @PostMapping
     public ResponseEntity<ChatResponse> chat(

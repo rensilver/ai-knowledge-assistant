@@ -24,11 +24,13 @@ For anything other than local dev, activate the `prod` profile (`SPRING_PROFILES
 - **Async ingestion**: done — `DocumentService.upload` returns as soon as the file is stored; `DocumentIngestionService` parses/chunks/embeds/indexes on a background pool and flips the row to `COMPLETED`/`FAILED`. `GET /documents/{id}` polls status.
 - **Observability**: done — `CorrelationIdFilter` stamps every request (and the async ingestion thread) with a request id via MDC; Micrometer timers on the retrieval, chat-answer, and agent-turn paths (`/actuator/metrics`); structured JSON logging (Boot's built-in ECS format) in the `prod` profile.
 - **Migrations**: V1–V5 verified applying against pgvector, both fresh and incrementally.
+- **API docs**: done — Swagger UI / OpenAPI 3 wired up via `springdoc-openapi-starter-webmvc-ui` (`OpenApiConfig`), with a JWT bearer security scheme and `@Operation`/`@ApiResponse` annotations documenting Auth, Documents, Chat, and Agent.
 - **Tests**: 38 unit + 11 integration (`./mvnw verify`; integration tests need Docker).
 
 ## Key decisions worth knowing
 
 - **Docker Postgres must be `pgvector/pgvector`, never plain `postgres`.** `V2__create_extensions.sql` does `CREATE EXTENSION vector`, which a stock image cannot satisfy. This bit the project once already; `PgVectorTestSupport` pins the right image for tests.
+- **`springdoc-openapi-starter-webmvc-ui` must be on its 3.x line for Spring Boot 4 / Spring Framework 7.** The 2.x line — even 2.6.0, what this project had pinned before Swagger was actually wired up — is binary-incompatible and throws `NoSuchMethodError` on `ControllerAdviceBean.<init>(Object)` the moment `/v3/api-docs` is requested. The app starts fine on either version, since springdoc's incompatible code path isn't touched until something hits the docs endpoint, which is why this sat unnoticed for as long as the dependency was pinned but unused in `pom.xml`.
 - **Retrieved context goes in the *system* message, not appended to the user's question.** `MessageChatMemoryAdvisor` persists only the last user message, so this keeps history storing the question rather than a copy of every chunk retrieved for it. Verified against the advisor's `before()`, which stores `getLastUserOrToolResponseMessage()`.
 - **`chat_history` is not Spring AI's `SPRING_AI_CHAT_MEMORY` schema.** Theirs keys on a single `conversation_id VARCHAR(36)`, too narrow for this app's user-namespaced key (`"<userId>:<conversationId>"`, 73 chars). Two real UUID columns also give per-user listing and `ON DELETE CASCADE`.
 - **Chunking happens per page** (`DocumentChunker`), so a chunk never straddles a page boundary and can be attributed to exactly one page. Costs slightly undersized chunks at page ends.

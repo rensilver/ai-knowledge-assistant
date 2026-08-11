@@ -44,7 +44,8 @@ public class DocumentController {
             @ApiResponse(responseCode = "413", description = "File exceeds the maximum upload size",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "422", description = "Document could not be processed",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token (no response body)")
     })
     @PostMapping(value = "/upload", consumes = "multipart/form-data")
     public ResponseEntity<DocumentResponse> upload(
@@ -56,8 +57,11 @@ public class DocumentController {
     }
 
     @Operation(summary = "List all documents")
-    @ApiResponse(responseCode = "200", description = "Documents retrieved",
-            content = @Content(array = @ArraySchema(schema = @Schema(implementation = DocumentResponse.class))))
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Documents retrieved",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = DocumentResponse.class)))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token (no response body)")
+    })
     @GetMapping
     public ResponseEntity<List<DocumentResponse>> list() {
         return ResponseEntity.ok(documentService.list());
@@ -68,7 +72,8 @@ public class DocumentController {
             @ApiResponse(responseCode = "200", description = "Document found",
                     content = @Content(schema = @Schema(implementation = DocumentResponse.class))),
             @ApiResponse(responseCode = "404", description = "No document with that id",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token (no response body)")
     })
     @GetMapping("/{id}")
     public ResponseEntity<DocumentResponse> get(@PathVariable UUID id) {
@@ -81,7 +86,8 @@ public class DocumentController {
             @ApiResponse(responseCode = "403", description = "Caller does not have the ADMIN role",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "No document with that id",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token (no response body)")
     })
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
