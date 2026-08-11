@@ -37,6 +37,11 @@ public class DocumentController {
         return ResponseEntity.ok(documentService.list());
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<DocumentResponse> get(@PathVariable UUID id) {
+        return ResponseEntity.ok(documentService.get(id));
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {

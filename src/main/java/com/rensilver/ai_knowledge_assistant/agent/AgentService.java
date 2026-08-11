@@ -6,6 +6,8 @@ import com.rensilver.ai_knowledge_assistant.dto.ChatRequest;
 import com.rensilver.ai_knowledge_assistant.dto.ChatResponse;
 import com.rensilver.ai_knowledge_assistant.entity.UserEntity;
 import com.rensilver.ai_knowledge_assistant.repository.UserRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -30,15 +32,18 @@ public class AgentService {
     private final ChatClient agentChatClient;
     private final UserRepository userRepository;
     private final ConversationMemoryService conversationMemoryService;
+    private final MeterRegistry meterRegistry;
 
     public AgentService(
             @Qualifier("agentChatClient") ChatClient agentChatClient,
             UserRepository userRepository,
-            ConversationMemoryService conversationMemoryService
+            ConversationMemoryService conversationMemoryService,
+            MeterRegistry meterRegistry
     ) {
         this.agentChatClient = agentChatClient;
         this.userRepository = userRepository;
         this.conversationMemoryService = conversationMemoryService;
+        this.meterRegistry = meterRegistry;
     }
 
     public ChatResponse chat(ChatRequest request, String userEmail) {
@@ -47,11 +52,15 @@ public class AgentService {
 
         ConversationContext context = conversationMemoryService.resolve(request.conversationId(), user.getId());
 
-        String answer = agentChatClient.prompt()
-                .user(request.message())
-                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, context.memoryKey()))
-                .call()
-                .content();
+        // Includes however many tool round-trips the model makes, unlike
+        // rag.answer.duration (RagService), which is always a single call.
+        String answer = Timer.builder("agent.turn.duration")
+                .register(meterRegistry)
+                .record(() -> agentChatClient.prompt()
+                        .user(request.message())
+                        .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, context.memoryKey()))
+                        .call()
+                        .content());
 
         // Sources aren't reported here the way ChatService does: the model may
         // call searchDocuments any number of times (or not at all), so there is

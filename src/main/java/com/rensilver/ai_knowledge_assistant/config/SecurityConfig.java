@@ -1,14 +1,13 @@
 package com.rensilver.ai_knowledge_assistant.config;
 
 import com.rensilver.ai_knowledge_assistant.security.JwtFilter;
-import com.rensilver.ai_knowledge_assistant.security.UserDetailsServiceImpl;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -17,6 +16,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -35,20 +35,25 @@ import java.util.List;
  * <p>Public endpoints: auth (login/register), health checks, and OpenAPI docs.
  * Everything else — chat, document upload/list/delete, embeddings — requires
  * a valid JWT, which is sufficient for the MVP per the architecture doc.
+ *
+ * <p>No explicit {@code AuthenticationProvider} bean is defined here:
+ * Spring Security's global {@code AuthenticationManagerBuilder} auto-wires a
+ * {@code DaoAuthenticationProvider} from the single {@code UserDetailsService}
+ * bean ({@code UserDetailsServiceImpl}) and the {@link #passwordEncoder()}
+ * bean below, so declaring one explicitly would only have been a redundant
+ * duplicate of what Boot already builds.
  */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    private final UserDetailsServiceImpl userDetailsService;
     private final JwtFilter jwtFilter;
 
     @Value("${app.cors.allowed-origins:http://localhost:3000}")
     private List<String> allowedOrigins;
 
-    public SecurityConfig(UserDetailsServiceImpl userDetailsService, JwtFilter jwtFilter) {
-        this.userDetailsService = userDetailsService;
+    public SecurityConfig(JwtFilter jwtFilter) {
         this.jwtFilter = jwtFilter;
     }
 
@@ -64,22 +69,14 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated())
-                .authenticationProvider(authenticationProvider())
+                // Without this, Spring Security falls back to Http403ForbiddenEntryPoint
+                // for a request with no credentials at all — 403 is meant for
+                // "authenticated but not allowed", not "not authenticated"; a
+                // stateless JWT API has no login page to redirect to instead.
+                .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
-    }
-
-    /**
-     * Bridges Spring Security's authentication process to our own
-     * UserDetailsServiceImpl (Postgres-backed) and password hashing scheme.
-     * Used by AuthService during login to verify credentials.
-     */
-    @Bean
-    public DaoAuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService);
-        provider.setPasswordEncoder(passwordEncoder());
-        return provider;
     }
 
     @Bean

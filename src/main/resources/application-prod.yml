@@ -1,0 +1,14 @@
+# Activated via SPRING_PROFILES_ACTIVE=prod. Overrides the dev-only defaults
+# in application.yml that must never be relied on outside a local machine.
+app:
+  jwt:
+    # No default here, unlike the base config: if JWT_SECRET isn't set in the
+    # environment, placeholder resolution fails and the app refuses to start,
+    # rather than silently running with the secret checked into source control.
+    #   export JWT_SECRET="$(openssl rand -base64 32)"
+    secret: ${JWT_SECRET}
+
+logging:
+  structured:
+    format:
+      console: ecs

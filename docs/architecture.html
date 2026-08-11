@@ -432,87 +432,105 @@
     <section id="ingestion">
       <p class="eyebrow">03 · Building the index</p>
       <h2>Document ingestion — <code>POST /documents/upload</code></h2>
-      <p>Upload runs synchronously inside the HTTP request — there's no job queue yet, so a large PDF simply
-        makes the call take longer. The raw bytes are stored first regardless of outcome; only after that does
-        parsing, chunking and embedding run.</p>
+      <p>Upload returns as soon as the raw file is safely stored — parsing, chunking, embedding and indexing all
+        happen afterward on a background thread pool (<code>DocumentIngestionService</code>,
+        <code>AsyncConfig</code>), so a large PDF no longer makes the HTTP call hang for the whole pipeline. The
+        client gets a <code>201</code> with <span class="status-pill processing">processing</span> immediately
+        and polls <code>GET /documents/{id}</code> (or <code>GET /documents</code>) to see it flip to
+        <span class="status-pill completed">completed</span> or <span class="status-pill failed">failed</span>.</p>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 900 280" role="img" aria-label="DocumentController receives a PDF and hands it to DocumentService, which saves a PROCESSING row, stores the raw bytes via DocumentStorageService, extracts text per page with PdfParserService, splits it into per-page chunks with DocumentChunker, and embeds and indexes those chunks into pgvector via VectorStoreService. On success the document row becomes COMPLETED and a 201 response is returned; on failure it becomes FAILED and the request fails with a 422 error instead.">
+          <svg viewBox="0 0 940 520" role="img" aria-label="DocumentController receives a PDF and hands it to DocumentService, which stores the raw bytes via DocumentStorageService and saves a PROCESSING documents row, then immediately returns a 201 response — the request ends there. Storage separately hands off, asynchronously via a bounded executor, to DocumentIngestionService, which extracts text per page with PdfParserService, splits it into per-page chunks with DocumentChunker, and embeds and indexes those chunks into pgvector via VectorStoreService. On success the documents row becomes COMPLETED; on failure, from any exception, it becomes FAILED. The client discovers the outcome by polling GET /documents/{id}, which reads the same row.">
             <defs>
               <marker id="arrow-ing" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                 <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
               </marker>
             </defs>
 
-            <rect x="10" y="90" width="120" height="56" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
-            <text x="70" y="114" text-anchor="middle" font-size="12" font-weight="600">Client</text>
-            <text x="70" y="130" text-anchor="middle" font-size="9.5" opacity="0.7">multipart PDF</text>
+            <text x="10" y="24" font-size="11" font-weight="700" letter-spacing="0.04em" fill="var(--accent-strong)">SYNCHRONOUS — inside the HTTP request</text>
+            <rect x="10" y="40" width="110" height="56" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="65" y="64" text-anchor="middle" font-size="12" font-weight="600">Client</text>
+            <text x="65" y="80" text-anchor="middle" font-size="9.5" opacity="0.7">multipart PDF</text>
 
-            <rect x="170" y="90" width="130" height="56" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
-            <text x="235" y="114" text-anchor="middle" font-size="12" font-weight="600">Document</text>
-            <text x="235" y="130" text-anchor="middle" font-size="12" font-weight="600">Controller</text>
+            <rect x="160" y="40" width="140" height="56" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="230" y="64" text-anchor="middle" font-size="12" font-weight="600">Document</text>
+            <text x="230" y="80" text-anchor="middle" font-size="12" font-weight="600">Controller</text>
 
-            <rect x="340" y="10" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
-            <text x="415" y="32" text-anchor="middle" font-size="11.5" font-weight="600">DocumentStorage</text>
-            <text x="415" y="47" text-anchor="middle" font-size="9.5" opacity="0.7">writes raw bytes to disk</text>
+            <rect x="340" y="40" width="150" height="56" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="415" y="64" text-anchor="middle" font-size="11.5" font-weight="600">DocumentStorage</text>
+            <text x="415" y="80" text-anchor="middle" font-size="9.5" opacity="0.7">writes raw bytes to disk</text>
 
-            <rect x="340" y="82" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
-            <text x="415" y="104" text-anchor="middle" font-size="11.5" font-weight="600">PdfParserService</text>
-            <text x="415" y="119" text-anchor="middle" font-size="9.5" opacity="0.7">extracts text per page</text>
+            <rect x="530" y="40" width="170" height="56" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+            <text x="615" y="62" text-anchor="middle" font-size="11.5" font-weight="600">documents row</text>
+            <text x="615" y="78" text-anchor="middle" font-size="9.5" fill="var(--warn)" font-weight="700">status: PROCESSING</text>
 
-            <rect x="340" y="154" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
-            <text x="415" y="176" text-anchor="middle" font-size="11.5" font-weight="600">DocumentChunker</text>
-            <text x="415" y="191" text-anchor="middle" font-size="9.5" opacity="0.7">splits within each page</text>
+            <rect x="740" y="40" width="190" height="56" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+            <text x="835" y="62" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--accent-strong)">201 + DocumentResponse</text>
+            <text x="835" y="78" text-anchor="middle" font-size="9.5" fill="var(--accent-strong)" opacity="0.85">status: PROCESSING — request ends here</text>
 
-            <rect x="340" y="226" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
-            <text x="415" y="248" text-anchor="middle" font-size="11.5" font-weight="600">VectorStoreService</text>
-            <text x="415" y="263" text-anchor="middle" font-size="9.5" opacity="0.7">embeds + indexes chunks</text>
+            <line x1="120" y1="68" x2="158" y2="68" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-ing)"></line>
+            <line x1="300" y1="68" x2="338" y2="68" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-ing)"></line>
+            <line x1="490" y1="68" x2="528" y2="68" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-ing)"></line>
+            <line x1="700" y1="68" x2="738" y2="68" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-ing)"></line>
 
-            <rect x="540" y="118" width="150" height="60" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
-            <text x="615" y="142" text-anchor="middle" font-size="12" font-weight="600">pgvector</text>
-            <text x="615" y="158" text-anchor="middle" font-size="9.5" opacity="0.7">document_chunks</text>
-            <text x="615" y="171" text-anchor="middle" font-size="9.5" opacity="0.7">status: PROCESSING</text>
+            <text x="10" y="176" font-size="11" font-weight="700" letter-spacing="0.04em" fill="var(--accent-strong)">ASYNCHRONOUS — documentIngestionExecutor</text>
+            <line x1="415" y1="96" x2="235" y2="196" stroke="currentColor" stroke-width="1.3" stroke-dasharray="4 4" marker-end="url(#arrow-ing)"></line>
+            <text x="330" y="150" text-anchor="middle" font-size="9.5" opacity="0.75">handed off async</text>
 
-            <polygon points="750,90 830,148 750,206 670,148" fill="none" stroke="currentColor" stroke-width="1.4"></polygon>
-            <text x="750" y="144" text-anchor="middle" font-size="10.5" font-weight="600">indexed</text>
-            <text x="750" y="158" text-anchor="middle" font-size="10.5" font-weight="600">OK?</text>
+            <rect x="160" y="196" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="235" y="218" text-anchor="middle" font-size="11.5" font-weight="600">PdfParserService</text>
+            <text x="235" y="233" text-anchor="middle" font-size="9.5" opacity="0.7">extracts text per page</text>
 
-            <rect x="770" y="10" width="120" height="50" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
-            <text x="830" y="30" text-anchor="middle" font-size="11" font-weight="700" fill="var(--accent-strong)">COMPLETED</text>
-            <text x="830" y="45" text-anchor="middle" font-size="9.5" fill="var(--accent-strong)" opacity="0.85">201 + DocumentResponse</text>
+            <rect x="340" y="196" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="415" y="218" text-anchor="middle" font-size="11.5" font-weight="600">DocumentChunker</text>
+            <text x="415" y="233" text-anchor="middle" font-size="9.5" opacity="0.7">splits within each page</text>
 
-            <rect x="770" y="236" width="120" height="50" rx="7" fill="none" stroke="var(--danger)" stroke-width="1.5"></rect>
-            <text x="830" y="256" text-anchor="middle" font-size="11" font-weight="700" fill="var(--danger)">FAILED</text>
-            <text x="830" y="271" text-anchor="middle" font-size="9.5" fill="var(--danger)" opacity="0.9">422 ErrorResponse</text>
+            <rect x="530" y="196" width="150" height="52" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="605" y="218" text-anchor="middle" font-size="11.5" font-weight="600">VectorStoreService</text>
+            <text x="605" y="233" text-anchor="middle" font-size="9.5" opacity="0.7">embeds + indexes chunks</text>
 
-            <line x1="130" y1="118" x2="168" y2="118" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow-ing)"></line>
-            <line x1="300" y1="105" x2="338" y2="55" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-ing)"></line>
-            <text x="322" y="80" font-size="9.5" opacity="0.7">1</text>
-            <line x1="415" y1="62" x2="415" y2="80" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-ing)"></line>
-            <text x="428" y="74" font-size="9.5" opacity="0.7">2</text>
-            <line x1="415" y1="134" x2="415" y2="152" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-ing)"></line>
-            <text x="428" y="146" font-size="9.5" opacity="0.7">3</text>
-            <line x1="415" y1="206" x2="415" y2="224" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-ing)"></line>
-            <text x="428" y="218" font-size="9.5" opacity="0.7">4</text>
-            <line x1="490" y1="252" x2="538" y2="165" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-ing)"></line>
+            <polygon points="740,180 820,226 740,272 660,226" fill="none" stroke="currentColor" stroke-width="1.4"></polygon>
+            <text x="740" y="222" text-anchor="middle" font-size="10.5" font-weight="600">indexed</text>
+            <text x="740" y="236" text-anchor="middle" font-size="10.5" font-weight="600">OK?</text>
 
-            <line x1="690" y1="148" x2="748" y2="148" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrow-ing)"></line>
-            <line x1="778" y1="120" x2="815" y2="60" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#arrow-ing)"></line>
-            <text x="820" y="95" text-anchor="middle" font-size="9.5" fill="var(--accent-strong)">yes</text>
-            <line x1="778" y1="178" x2="815" y2="234" stroke="var(--danger)" stroke-width="1.5" marker-end="url(#arrow-ing)"></line>
-            <text x="820" y="212" text-anchor="middle" font-size="9.5" fill="var(--danger)">no</text>
+            <rect x="820" y="170" width="110" height="44" rx="7" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+            <text x="875" y="188" text-anchor="middle" font-size="11" font-weight="700" fill="var(--accent-strong)">COMPLETED</text>
+            <text x="875" y="203" text-anchor="middle" font-size="9" fill="var(--accent-strong)" opacity="0.85">documents row updated</text>
+
+            <rect x="820" y="238" width="110" height="44" rx="7" fill="none" stroke="var(--danger)" stroke-width="1.5"></rect>
+            <text x="875" y="256" text-anchor="middle" font-size="11" font-weight="700" fill="var(--danger)">FAILED</text>
+            <text x="875" y="271" text-anchor="middle" font-size="9" fill="var(--danger)" opacity="0.9">any exception, not just</text>
+            <text x="875" y="282" text-anchor="middle" font-size="9" fill="var(--danger)" opacity="0.9">DocumentProcessingException</text>
+
+            <line x1="310" y1="222" x2="338" y2="222" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-ing)"></line>
+            <line x1="490" y1="222" x2="528" y2="222" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-ing)"></line>
+            <line x1="680" y1="222" x2="658" y2="223" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-ing)"></line>
+            <line x1="800" y1="215" x2="818" y2="192" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#arrow-ing)"></line>
+            <text x="795" y="200" text-anchor="middle" font-size="9.5" fill="var(--accent-strong)">yes</text>
+            <line x1="800" y1="238" x2="818" y2="259" stroke="var(--danger)" stroke-width="1.5" marker-end="url(#arrow-ing)"></line>
+            <text x="795" y="253" text-anchor="middle" font-size="9.5" fill="var(--danger)">no</text>
+
+            <path d="M 875 170 C 875 130, 700 100, 630 98" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arrow-ing)"></path>
+            <path d="M 875 282 C 875 330, 700 340, 630 100" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arrow-ing)"></path>
+
+            <rect x="530" y="330" width="230" height="44" rx="8" fill="none" stroke="var(--line)" stroke-width="1.3" stroke-dasharray="3 4"></rect>
+            <text x="645" y="350" text-anchor="middle" font-size="10.5" font-weight="600">Client polls</text>
+            <text x="645" y="364" text-anchor="middle" font-size="9.5" opacity="0.7">GET /documents/{id}</text>
+            <line x1="645" y1="330" x2="620" y2="98" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arrow-ing)"></line>
           </svg>
         </div>
-        <figcaption>Steps 1–4 run inside one try block in <code>DocumentService.upload</code>; a
-          <code>DocumentProcessingException</code> anywhere in it flips the row to <code>FAILED</code> and
-          re-throws, so the client sees an error, never a <code>DocumentResponse</code> with
-          <code>status: "FAILED"</code>.</figcaption>
+        <figcaption><code>DocumentIngestionService.ingest</code> catches <em>any</em> exception, not just
+          <code>DocumentProcessingException</code> — it runs on a background thread with no HTTP caller left to
+          propagate an error to, so an uncaught exception there would otherwise leave the row stuck in
+          <code>PROCESSING</code> forever with the failure visible only in logs.</figcaption>
       </figure>
       <div class="note">
         <span class="tag">Worth knowing</span>
-        <p>Because this all happens inside one request, a concurrent <code>GET /documents</code> from another
-          call can genuinely observe the row in <span class="status-pill processing">processing</span> — it
-          isn't a dead status, just a narrow window.</p>
+        <p><span class="status-pill processing">processing</span> is no longer a narrow race-condition window —
+          it's the normal status for however long ingestion takes after upload returns. A correlation id set by
+          <code>CorrelationIdFilter</code> on the original request is carried across onto the ingestion thread
+          (via a <code>TaskDecorator</code> on the executor), so its logs can still be tied back to the upload
+          that triggered them.</p>
       </div>
     </section>
 
@@ -524,7 +542,7 @@
         when to retrieve.</p>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 900 470" role="img" aria-label="Chat compared to Agent. Chat: RagService always calls ContextRetriever exactly once, folds the result into the system prompt via PromptAugmentationService, then calls the chat model once, returning an explicit sources list. Agent: AgentService hands the question straight to a tool-equipped chat client; the model itself decides whether and how many times to call the searchDocuments or listDocuments tools before answering, so there is no single retrieval to attribute as sources. Both share the same ChatMemory, persisted to the chat_history table in Postgres.">
+          <svg viewBox="0 0 900 520" role="img" aria-label="Chat compared to Agent. Chat: RagService always calls ContextRetriever exactly once, folds the result into the system prompt via PromptAugmentationService, then calls the chat model once, returning an explicit sources list. Agent: AgentService hands the question straight to a tool-equipped chat client; the model itself decides whether and how many times to call the searchDocuments, listDocuments, or searchExternalKnowledge (Wikipedia) tools before answering, so there is no single retrieval to attribute as sources. Both share the same ChatMemory, persisted to the chat_history table in Postgres.">
             <defs>
               <marker id="arrow-cmp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                 <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
@@ -564,33 +582,37 @@
             <text x="690" y="76" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--accent-strong)">agentChatClient → Ollama</text>
             <text x="690" y="92" text-anchor="middle" font-size="9.5" fill="var(--accent-strong)" opacity="0.85">question handed over as-is, with tools attached</text>
 
-            <rect x="540" y="140" width="300" height="150" rx="10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 4"></rect>
+            <rect x="540" y="140" width="300" height="190" rx="10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 4"></rect>
             <text x="690" y="158" text-anchor="middle" font-size="10" font-weight="700" opacity="0.75">model decides, 0..n times</text>
-            <rect x="565" y="172" width="240" height="46" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"></rect>
-            <text x="685" y="192" text-anchor="middle" font-size="10.5" font-weight="600">searchDocuments(query)</text>
-            <text x="685" y="206" text-anchor="middle" font-size="9" opacity="0.65">→ ContextRetriever, same code path</text>
-            <rect x="565" y="228" width="240" height="46" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"></rect>
-            <text x="685" y="248" text-anchor="middle" font-size="10.5" font-weight="600">listDocuments()</text>
-            <text x="685" y="262" text-anchor="middle" font-size="9" opacity="0.65">→ fixed DB listing, no free-form SQL</text>
+            <rect x="565" y="172" width="240" height="42" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"></rect>
+            <text x="685" y="190" text-anchor="middle" font-size="10.5" font-weight="600">searchDocuments(query)</text>
+            <text x="685" y="204" text-anchor="middle" font-size="9" opacity="0.65">→ ContextRetriever, same code path</text>
+            <rect x="565" y="222" width="240" height="42" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"></rect>
+            <text x="685" y="240" text-anchor="middle" font-size="10.5" font-weight="600">listDocuments()</text>
+            <text x="685" y="254" text-anchor="middle" font-size="9" opacity="0.65">→ fixed DB listing, no free-form SQL</text>
+            <rect x="565" y="272" width="240" height="42" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"></rect>
+            <text x="685" y="290" text-anchor="middle" font-size="10.5" font-weight="600">searchExternalKnowledge(topic)</text>
+            <text x="685" y="304" text-anchor="middle" font-size="9" opacity="0.65">→ Wikipedia, only after docs search is empty</text>
 
             <line x1="690" y1="106" x2="690" y2="138" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-cmp)"></line>
-            <path d="M 690 290 C 690 315, 690 315, 690 336" fill="none" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-cmp)"></path>
+            <path d="M 690 330 C 690 366, 690 366, 690 402" fill="none" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow-cmp)"></path>
 
-            <rect x="500" y="362" width="380" height="46" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
-            <text x="690" y="384" text-anchor="middle" font-size="11.5" font-weight="600">answer, sources[] always empty</text>
-            <text x="690" y="398" text-anchor="middle" font-size="9" opacity="0.65">citations are inline text instead</text>
+            <rect x="500" y="402" width="380" height="46" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="690" y="424" text-anchor="middle" font-size="11.5" font-weight="600">answer, sources[] always empty</text>
+            <text x="690" y="438" text-anchor="middle" font-size="9" opacity="0.65">citations inline; model flags Wikipedia-sourced text</text>
 
-            <rect x="20" y="430" width="860" height="34" rx="7" fill="var(--surface-alt)" stroke="var(--line)" stroke-width="1"></rect>
-            <text x="450" y="452" text-anchor="middle" font-size="10.5" font-weight="600">shared: ChatMemory (20-msg window) → JdbcChatHistoryRepository → chat_history (Postgres)</text>
-            <line x1="210" y1="408" x2="300" y2="430" stroke="currentColor" stroke-width="1" opacity="0.6"></line>
-            <line x1="690" y1="408" x2="600" y2="430" stroke="currentColor" stroke-width="1" opacity="0.6"></line>
+            <rect x="20" y="470" width="860" height="34" rx="7" fill="var(--surface-alt)" stroke="var(--line)" stroke-width="1"></rect>
+            <text x="450" y="492" text-anchor="middle" font-size="10.5" font-weight="600">shared: ChatMemory (20-msg window) → JdbcChatHistoryRepository → chat_history (Postgres)</text>
+            <line x1="210" y1="408" x2="300" y2="470" stroke="currentColor" stroke-width="1" opacity="0.6"></line>
+            <line x1="690" y1="448" x2="600" y2="470" stroke="currentColor" stroke-width="1" opacity="0.6"></line>
           </svg>
         </div>
         <figcaption><code>/chat</code> retrieves exactly once, always, before the model ever runs — predictable
-          latency, and a sources list the caller can render directly. <code>/agent</code> hands the model the
-          same <code>searchDocuments</code> capability as a tool it can call repeatedly (or not at all) — better
-          for questions one retrieval can't answer, at the cost of extra round-trips and no attributable
-          sources list.</figcaption>
+          latency, and a sources list the caller can render directly. <code>/agent</code> hands the model three
+          tools it can call repeatedly (or not at all): <code>searchDocuments</code> and <code>listDocuments</code>
+          over the same index <code>/chat</code> uses, plus <code>searchExternalKnowledge</code> — the V4 spec's
+          third, external-API agent — for general knowledge the documents don't cover. This suits questions one
+          retrieval can't answer, at the cost of extra round-trips and no attributable sources list.</figcaption>
       </figure>
     </section>
 
@@ -618,7 +640,9 @@
         <div class="card">
           <h4>No "run this SQL" tool</h4>
           <p><code>listDocuments()</code> is a fixed, parameterless listing. A tool that accepted model-supplied
-            SQL would hand an injection primitive to whatever text a user can talk the model into emitting.</p>
+            SQL would hand an injection primitive to whatever text a user can talk the model into emitting.
+            <code>searchExternalKnowledge</code> follows the same spirit: it only ever takes a topic string,
+            never a raw URL, encoded into a fixed Wikipedia REST path template.</p>
         </div>
         <div class="card">
           <h4>Retrieval over-fetches, then re-ranks</h4>
@@ -632,6 +656,26 @@
           <p><code>docker-compose.yml</code> pins <code>pgvector/pgvector:pg16</code>. Plain <code>postgres:16</code>
             can't satisfy <code>V2__create_extensions.sql</code>'s <code>CREATE EXTENSION vector</code> — this
             broke the project once already.</p>
+        </div>
+        <div class="card">
+          <h4>Ingestion is async, and the service split accordingly</h4>
+          <p>The upload request only stores the file and returns; a separate <code>DocumentIngestionService</code>
+            does parse/chunk/embed/index on a bounded executor, so <code>PROCESSING</code> reflects real
+            background work rather than a request-scoped implementation detail.</p>
+        </div>
+        <div class="card">
+          <h4>The JWT secret has no default outside dev</h4>
+          <p><code>application.yml</code>'s <code>${JWT_SECRET:...}</code> default only applies with no active
+            profile. <code>application-prod.yml</code> overrides it with <code>${JWT_SECRET}</code> — no
+            fallback — so the <code>prod</code> profile fails to start rather than silently running with the
+            secret checked into source control.</p>
+        </div>
+        <div class="card">
+          <h4>A JWT API needs an explicit AuthenticationEntryPoint</h4>
+          <p>Left unset, Spring Security's default for a request with zero credentials is
+            <code>Http403ForbiddenEntryPoint</code> (403) — the wrong code for "not authenticated" (401).
+            <code>SecurityConfig</code> sets <code>HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)</code>
+            explicitly.</p>
         </div>
       </div>
     </section>
@@ -716,8 +760,11 @@
           <span class="auth-chip required">bearer required</span>
         </div>
         <p class="desc">Body type <strong>form-data</strong>, key <code>file</code> (type: File), a PDF only —
-          anything else is a <code>400</code>. Runs synchronously: the response only arrives once
-          parse+chunk+embed has finished. Max size 20 MB (<code>413</code> above that).</p>
+          anything else is a <code>400</code>. Max size 20 MB (<code>413</code> above that). Returns as soon as
+          the file is stored — parsing/chunking/embedding happens afterward in the background, so the response
+          always comes back <span class="status-pill processing">processing</span>, never
+          <span class="status-pill completed">completed</span>/<span class="status-pill failed">failed</span>
+          yet.</p>
         <div class="endpoint-grid">
           <div class="endpoint-block">
             <h5>Postman body tab</h5>
@@ -731,11 +778,34 @@
   "filename": "some-policy.pdf",
   "contentType": "application/pdf",
   "sizeBytes": 184320,
-  "status": "COMPLETED",
+  "status": "PROCESSING",
   "uploadedBy": "ada@example.com",
   "createdAt": "2026-08-10T14:02:11Z"
 }</code></pre>
           </div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">{{baseUrl}}/documents/{id}</span>
+          <span class="auth-chip required">bearer required</span>
+        </div>
+        <p class="desc">Poll this after upload to see ingestion finish — <code>status</code> moves to
+          <span class="status-pill completed">completed</span> or <span class="status-pill failed">failed</span>.
+          <code>404</code> if the id doesn't exist.</p>
+        <div class="endpoint-block">
+          <h5>200 — response</h5>
+          <pre><code>{
+  "id": "3f2a9c1e-...",
+  "filename": "some-policy.pdf",
+  "contentType": "application/pdf",
+  "sizeBytes": 184320,
+  "status": "COMPLETED",
+  "uploadedBy": "ada@example.com",
+  "createdAt": "2026-08-10T14:02:11Z"
+}</code></pre>
         </div>
       </div>
 
@@ -814,8 +884,11 @@
           <span class="auth-chip required">bearer required</span>
         </div>
         <p class="desc">Identical request/response shape to <code>/chat</code>. Expect higher, more variable
-          latency — the model may call <code>searchDocuments</code> more than once before answering.
-          <code>sources</code> is always <code>[]</code>; citations appear inline in <code>answer</code> instead.</p>
+          latency — the model may call <code>searchDocuments</code> (and, for general-knowledge questions the
+          documents don't cover, <code>searchExternalKnowledge</code> against Wikipedia) more than once before
+          answering. <code>sources</code> is always <code>[]</code>; citations appear inline in <code>answer</code>
+          instead, and the model is instructed to say explicitly when an answer came from Wikipedia rather than
+          the knowledge base.</p>
         <div class="endpoint-grid">
           <div class="endpoint-block">
             <h5>Body — raw JSON</h5>
@@ -887,6 +960,10 @@ docker compose --profile full up</code></pre>
       <p><code>docker compose up</code> deliberately starts only the dependencies — the backend stays behind
         the <code>full</code> profile so the usual dev loop (run from the IDE) doesn't rebuild an image every
         time.</p>
+      <p><strong>Outside local dev</strong>, activate the <code>prod</code> profile and export a real secret
+        first — the app won't start without it:</p>
+      <pre><code>export JWT_SECRET="$(openssl rand -base64 32)"
+SPRING_PROFILES_ACTIVE=prod ./mvnw spring-boot:run</code></pre>
     </section>
 
   </main>

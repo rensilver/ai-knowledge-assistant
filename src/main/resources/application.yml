@@ -28,6 +28,17 @@ spring:
     multipart:
       max-file-size: 20MB
       max-request-size: 20MB
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+logging:
+  pattern:
+    # requestId comes from CorrelationIdFilter's MDC entry; blank outside a
+    # request (e.g. startup logs). application-prod.yml replaces this with
+    # structured JSON instead, where MDC is included automatically.
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{requestId}] %logger{36} - %msg%n%wEx"
 app:
   cors:
     allowed-origins: http://localhost:3000

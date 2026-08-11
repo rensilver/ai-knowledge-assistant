@@ -5,13 +5,10 @@ import com.rensilver.ai_knowledge_assistant.entity.DocumentEntity;
 import com.rensilver.ai_knowledge_assistant.entity.DocumentStatus;
 import com.rensilver.ai_knowledge_assistant.entity.UserEntity;
 import com.rensilver.ai_knowledge_assistant.exception.DocumentNotFoundException;
-import com.rensilver.ai_knowledge_assistant.exception.DocumentProcessingException;
 import com.rensilver.ai_knowledge_assistant.exception.UnsupportedFileTypeException;
-import com.rensilver.ai_knowledge_assistant.rag.DocumentChunker;
 import com.rensilver.ai_knowledge_assistant.repository.DocumentRepository;
 import com.rensilver.ai_knowledge_assistant.repository.UserRepository;
 import com.rensilver.ai_knowledge_assistant.vectorstore.VectorStoreService;
-import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,13 +19,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Orchestrates the full V1 ingestion pipeline for one uploaded PDF:
- * store the raw file -> extract text -> chunk -> embed &amp; index into
- * pgvector -> mark the {@code documents} row COMPLETED (or FAILED).
- *
- * <p>Runs synchronously within the upload request — acceptable for the MVP
- * (no job queue yet); a slow/large PDF simply makes the upload call take
- * longer.
+ * Orchestrates the V1 ingestion pipeline for one uploaded PDF: store the raw
+ * file, create the {@code documents} row as {@code PROCESSING}, and hand the
+ * parse -> chunk -> embed &amp; index work off to {@link DocumentIngestionService}
+ * to run asynchronously — the upload call returns as soon as the file is
+ * safely stored, rather than blocking for the whole pipeline.
  */
 @Service
 public class DocumentService {
@@ -38,23 +33,20 @@ public class DocumentService {
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final DocumentStorageService storageService;
-    private final PdfParserService pdfParserService;
-    private final DocumentChunker documentChunker;
+    private final DocumentIngestionService documentIngestionService;
     private final VectorStoreService vectorStoreService;
 
     public DocumentService(
             DocumentRepository documentRepository,
             UserRepository userRepository,
             DocumentStorageService storageService,
-            PdfParserService pdfParserService,
-            DocumentChunker documentChunker,
+            DocumentIngestionService documentIngestionService,
             VectorStoreService vectorStoreService
     ) {
         this.documentRepository = documentRepository;
         this.userRepository = userRepository;
         this.storageService = storageService;
-        this.pdfParserService = pdfParserService;
-        this.documentChunker = documentChunker;
+        this.documentIngestionService = documentIngestionService;
         this.vectorStoreService = vectorStoreService;
     }
 
@@ -83,21 +75,16 @@ public class DocumentService {
         entity = documentRepository.save(entity);
 
         storageService.store(entity.getId(), bytes);
-
-        try {
-            List<PdfPage> pages = pdfParserService.extractPages(bytes);
-            List<Document> chunks = documentChunker.chunk(entity.getId(), entity.getFilename(), pages);
-            vectorStoreService.index(chunks);
-
-            entity.setStatus(DocumentStatus.COMPLETED);
-            entity = documentRepository.save(entity);
-        } catch (DocumentProcessingException e) {
-            entity.setStatus(DocumentStatus.FAILED);
-            documentRepository.save(entity);
-            throw e;
-        }
+        documentIngestionService.ingest(entity.getId(), entity.getFilename(), bytes);
 
         return DocumentResponse.from(entity);
+    }
+
+    @Transactional(readOnly = true)
+    public DocumentResponse get(UUID id) {
+        return documentRepository.findById(id)
+                .map(DocumentResponse::from)
+                .orElseThrow(() -> new DocumentNotFoundException(id));
     }
 
     @Transactional(readOnly = true)

@@ -1,5 +1,6 @@
 package com.rensilver.ai_knowledge_assistant.config;
 
+import com.rensilver.ai_knowledge_assistant.agent.ExternalKnowledgeTools;
 import com.rensilver.ai_knowledge_assistant.agent.KnowledgeBaseTools;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
@@ -101,9 +102,10 @@ public class OllamaConfig {
 
     /**
      * ChatClient for the V4 agent endpoint (see {@code AgentService}): same
-     * model and memory, but with {@link KnowledgeBaseTools} attached so the
-     * model can decide to search the knowledge base itself instead of being
-     * handed a fixed set of retrieved chunks.
+     * model and memory, but with {@link KnowledgeBaseTools} and
+     * {@link ExternalKnowledgeTools} attached so the model can decide to
+     * search the knowledge base — or, failing that, the open web — itself
+     * instead of being handed a fixed set of retrieved chunks.
      *
      * <p>Kept as a separate bean rather than adding tools to the primary
      * client, so the plain {@code /chat} path stays a predictable single
@@ -113,12 +115,13 @@ public class OllamaConfig {
     public ChatClient agentChatClient(
             ChatModel chatModel,
             ChatMemory chatMemory,
-            KnowledgeBaseTools knowledgeBaseTools
+            KnowledgeBaseTools knowledgeBaseTools,
+            ExternalKnowledgeTools externalKnowledgeTools
     ) {
         return ChatClient.builder(chatModel)
                 .defaultOptions(newChatOptionsBuilder())
                 .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
-                .defaultTools(knowledgeBaseTools)
+                .defaultTools(knowledgeBaseTools, externalKnowledgeTools)
                 .defaultSystem("""
                         You are a corporate knowledge assistant with access to the
                         company's document knowledge base through tools.
@@ -127,11 +130,16 @@ public class OllamaConfig {
                         company documents say — search more than once with different
                         wording if the first result is unhelpful. Use listDocuments for
                         questions about which documents exist rather than their contents.
+                        Answer company-related questions only from what these two tools
+                        return. If they return nothing relevant, say the knowledge base
+                        does not cover it rather than guessing. Cite the document name
+                        and page exactly as the tool labels them.
 
-                        Answer only from what the tools return. If they return nothing
-                        relevant, say the knowledge base does not cover it rather than
-                        answering from general knowledge. Cite the document name and
-                        page exactly as the tool labels them.
+                        For general-knowledge questions unrelated to company documents,
+                        or when searchDocuments genuinely found nothing relevant, you may
+                        use searchExternalKnowledge (Wikipedia) instead. Always tell the
+                        user clearly when an answer came from Wikipedia rather than the
+                        company's knowledge base.
                         """)
                 .build();
     }

@@ -1,6 +1,8 @@
 package com.rensilver.ai_knowledge_assistant.rag;
 
 import com.rensilver.ai_knowledge_assistant.vectorstore.VectorStoreService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -23,6 +25,7 @@ public class ContextRetriever {
 
     private final VectorStoreService vectorStoreService;
     private final ReRanker reRanker;
+    private final MeterRegistry meterRegistry;
     private final int topK;
     private final double similarityThreshold;
     private final int overfetchFactor;
@@ -30,19 +33,26 @@ public class ContextRetriever {
     public ContextRetriever(
             VectorStoreService vectorStoreService,
             ReRanker reRanker,
+            MeterRegistry meterRegistry,
             @Value("${app.rag.top-k:5}") int topK,
             @Value("${app.rag.similarity-threshold:0.5}") double similarityThreshold,
             @Value("${app.rag.overfetch-factor:4}") int overfetchFactor
     ) {
         this.vectorStoreService = vectorStoreService;
         this.reRanker = reRanker;
+        this.meterRegistry = meterRegistry;
         this.topK = topK;
         this.similarityThreshold = similarityThreshold;
         this.overfetchFactor = overfetchFactor;
     }
 
     public List<Document> retrieve(String query) {
-        List<Document> candidates = vectorStoreService.search(query, topK * overfetchFactor, similarityThreshold);
-        return reRanker.rerank(query, candidates, topK);
+        return Timer.builder("rag.retrieval.duration")
+                .register(meterRegistry)
+                .record(() -> {
+                    List<Document> candidates =
+                            vectorStoreService.search(query, topK * overfetchFactor, similarityThreshold);
+                    return reRanker.rerank(query, candidates, topK);
+                });
     }
 }

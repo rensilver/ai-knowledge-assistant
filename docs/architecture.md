@@ -89,29 +89,36 @@ server-side session to short-circuit it.
 
 ## 3. Document ingestion — `POST /documents/upload`
 
-Upload runs synchronously inside the HTTP request — there's no job queue yet, so a large PDF simply makes the
-call take longer. The raw bytes are stored first regardless of outcome; only after that does parsing, chunking
-and embedding run.
+Upload returns as soon as the raw file is safely stored — parsing, chunking, embedding and indexing all happen
+afterward on a background thread pool (`DocumentIngestionService`, `AsyncConfig`), so a large PDF no longer
+makes the HTTP call hang for the whole pipeline. The client gets a `201` with `status: "PROCESSING"` immediately
+and polls `GET /documents/{id}` (or `GET /documents`) to see it flip to `COMPLETED` or `FAILED`.
 
 ```mermaid
 flowchart TD
     Client["Client\n(multipart PDF)"] --> Ctrl[DocumentController]
-    Ctrl --> Storage["1. DocumentStorageService\nwrites raw bytes to disk"]
-    Storage --> Parser["2. PdfParserService\nextracts text per page"]
-    Parser --> Chunker["3. DocumentChunker\nsplits within each page"]
-    Chunker --> Vector["4. VectorStoreService\nembeds + indexes chunks"]
-    Vector --> PG[("pgvector\ndocument_chunks\nstatus: PROCESSING")]
-    PG --> Decision{indexed OK?}
-    Decision -- yes --> Completed["COMPLETED\n201 + DocumentResponse"]
-    Decision -- no --> Failed["FAILED\n422 ErrorResponse"]
+    Ctrl --> Storage["DocumentStorageService\nwrites raw bytes to disk"]
+    Storage --> Row[("documents row\nstatus: PROCESSING")]
+    Row --> Resp["201 + DocumentResponse\n(status: PROCESSING) — request ends here"]
+
+    Storage -. "handed off async\n(documentIngestionExecutor)" .-> Parser["PdfParserService\nextracts text per page"]
+    Parser --> Chunker["DocumentChunker\nsplits within each page"]
+    Chunker --> Vector["VectorStoreService\nembeds + indexes chunks"]
+    Vector --> Decision{indexed OK?}
+    Decision -- yes --> Completed["documents row → COMPLETED"]
+    Decision -- no --> Failed["documents row → FAILED\n(any exception, not just\nDocumentProcessingException)"]
+
+    Poll["Client polls\nGET /documents/{id}"] -.-> Row
 ```
 
-Steps 1–4 run inside one try block in `DocumentService.upload`; a `DocumentProcessingException` anywhere in it
-flips the row to `FAILED` and re-throws, so the client sees an error, never a `DocumentResponse` with
-`status: "FAILED"`.
+`DocumentIngestionService.ingest` catches *any* exception, not just `DocumentProcessingException` — it runs on
+a background thread with no HTTP caller left to propagate an error to, so an uncaught exception there would
+otherwise leave the row stuck in `PROCESSING` forever with the failure visible only in logs.
 
-> **Worth knowing:** because this all happens inside one request, a concurrent `GET /documents` from another
-> call can genuinely observe the row in `PROCESSING` — it isn't a dead status, just a narrow window.
+> **Worth knowing:** `PROCESSING` is no longer a narrow race-condition window — it's the normal status for
+> however long ingestion takes after upload returns. A correlation id set by `CorrelationIdFilter` on the
+> original request is carried across onto the ingestion thread (via a `TaskDecorator` on the executor), so its
+> logs can still be tied back to the upload that triggered them.
 
 ## 4. `/chat` vs `/agent` — two strategies, one index
 
@@ -135,9 +142,11 @@ flowchart TD
         AC --> Loop{"model decides, 0..n times"}
         Loop --> Search["searchDocuments(query)\n→ ContextRetriever, same code path"]
         Loop --> List["listDocuments()\n→ fixed DB listing, no free-form SQL"]
+        Loop --> Wiki["searchExternalKnowledge(topic)\n→ Wikipedia REST API\n(only after searchDocuments comes up empty)"]
         Search --> AC
         List --> AC
-        AC --> AAns["answer, sources[] always empty\ncitations are inline text instead"]
+        Wiki --> AC
+        AC --> AAns["answer, sources[] always empty\ncitations are inline text instead —\nmodel is told to flag Wikipedia-sourced text"]
     end
 
     CAns -.-> Mem[("shared: ChatMemory (20-msg window)\n→ JdbcChatHistoryRepository → chat_history (Postgres)")]
@@ -145,9 +154,10 @@ flowchart TD
 ```
 
 `/chat` retrieves exactly once, always, before the model ever runs — predictable latency, and a sources list
-the caller can render directly. `/agent` hands the model the same `searchDocuments` capability as a tool it can
-call repeatedly (or not at all) — better for questions one retrieval can't answer, at the cost of extra
-round-trips and no attributable sources list.
+the caller can render directly. `/agent` hands the model three tools it can call repeatedly (or not at all):
+`searchDocuments` and `listDocuments` over the same index `/chat` uses, plus `searchExternalKnowledge` — the V4
+spec's third, external-API agent — for general knowledge the documents don't cover. This suits questions one
+retrieval can't answer, at the cost of extra round-trips and no attributable sources list.
 
 ## 5. Decisions worth knowing before you change this code
 
@@ -161,6 +171,8 @@ round-trips and no attributable sources list.
   every citation — can be attributed to exactly one page. Costs slightly undersized chunks at page ends.
 - **No "run this SQL" tool.** `listDocuments()` is a fixed, parameterless listing. A tool that accepted
   model-supplied SQL would hand an injection primitive to whatever text a user can talk the model into emitting.
+  `searchExternalKnowledge` follows the same spirit: it only ever takes a topic string, never a raw URL, encoded
+  into a fixed Wikipedia REST path template.
 - **Retrieval over-fetches, then re-ranks.** Vector search alone decides on embedding proximity — anything just
   outside `top-k` is lost. Pulling `top-k × overfetch-factor` candidates and blending in lexical overlap
   (`ReRanker`) catches exact terms — product names, error codes — that embed close to, but not on, the right
@@ -168,6 +180,16 @@ round-trips and no attributable sources list.
 - **pgvector image, not stock postgres.** `docker-compose.yml` pins `pgvector/pgvector:pg16`. Plain
   `postgres:16` can't satisfy `V2__create_extensions.sql`'s `CREATE EXTENSION vector` — this broke the project
   once already.
+- **Ingestion is async; `DocumentService` and `DocumentIngestionService` are split accordingly.** The upload
+  request only stores the file and returns; a separate bean does parse/chunk/embed/index on a bounded executor
+  so `DocumentStatus.PROCESSING` reflects real background work rather than a request-scoped implementation
+  detail (see §3).
+- **The JWT secret has no default outside dev.** `application.yml`'s `${JWT_SECRET:...}` default only applies
+  with no active profile. `application-prod.yml` overrides it with `${JWT_SECRET}` — no fallback — so the `prod`
+  profile fails to start rather than silently running with the secret that's checked into source control.
+- **A stateless JWT API needs an explicit `AuthenticationEntryPoint`.** Left unset, Spring Security's default for
+  a request with zero credentials is `Http403ForbiddenEntryPoint` (403) — the wrong code for "not authenticated"
+  (401). `SecurityConfig` sets `HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)` explicitly.
 
 ## 6. API & Postman examples
 
@@ -239,8 +261,9 @@ Body — raw JSON:
 
 ### `POST {{baseUrl}}/documents/upload` — bearer required
 
-Body type **form-data**, key `file` (type: File), a PDF only — anything else is a `400`. Runs synchronously:
-the response only arrives once parse+chunk+embed has finished. Max size 20 MB (`413` above that).
+Body type **form-data**, key `file` (type: File), a PDF only — anything else is a `400`. Max size 20 MB (`413`
+above that). Returns as soon as the file is stored — parsing/chunking/embedding happens afterward in the
+background, so the response always comes back `status: "PROCESSING"`, never `COMPLETED`/`FAILED` yet.
 
 Postman body tab:
 
@@ -250,6 +273,25 @@ form-data
 ```
 
 201 response:
+
+```json
+{
+  "id": "3f2a9c1e-...",
+  "filename": "some-policy.pdf",
+  "contentType": "application/pdf",
+  "sizeBytes": 184320,
+  "status": "PROCESSING",
+  "uploadedBy": "ada@example.com",
+  "createdAt": "2026-08-10T14:02:11Z"
+}
+```
+
+### `GET {{baseUrl}}/documents/{id}` — bearer required
+
+Poll this after upload to see ingestion finish — `status` moves to `COMPLETED` or `FAILED`. `404` if the id
+doesn't exist.
+
+200 response:
 
 ```json
 {
@@ -321,8 +363,10 @@ Body — raw JSON:
 ### `POST {{baseUrl}}/agent` — bearer required
 
 Identical request/response shape to `/chat`. Expect higher, more variable latency — the model may call
-`searchDocuments` more than once before answering. `sources` is always `[]`; citations appear inline in
-`answer` instead.
+`searchDocuments` (and, for general-knowledge questions the documents don't cover, `searchExternalKnowledge`
+against Wikipedia) more than once before answering. `sources` is always `[]`; citations appear inline in
+`answer` instead, and the model is instructed to say explicitly when an answer came from Wikipedia rather than
+the knowledge base.
 
 Body — raw JSON:
 
@@ -369,6 +413,14 @@ docker compose --profile full up
 
 `docker compose up` deliberately starts only the dependencies — the backend stays behind the `full` profile so
 the usual dev loop (run from the IDE) doesn't rebuild an image every time.
+
+**Outside local dev**, activate the `prod` profile and export a real secret first — the app won't start
+without it:
+
+```bash
+export JWT_SECRET="$(openssl rand -base64 32)"
+SPRING_PROFILES_ACTIVE=prod ./mvnw spring-boot:run
+```
 
 ---
 
