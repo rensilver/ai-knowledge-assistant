@@ -156,7 +156,7 @@
 		<dependency>
     		<groupId>org.springdoc</groupId>
     		<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-    		<version>2.6.0</version>
+    		<version>3.1.0</version>
 		</dependency>
 		<!-- Integration tests run against a real pgvector Postgres: the schema
 		     depends on the `vector` extension and HNSW indexes, so an embedded
