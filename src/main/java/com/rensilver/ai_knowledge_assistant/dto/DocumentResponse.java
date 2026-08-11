@@ -1,6 +1,7 @@
 package com.rensilver.ai_knowledge_assistant.dto;
 
 import com.rensilver.ai_knowledge_assistant.entity.DocumentEntity;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -13,6 +14,8 @@ public record DocumentResponse(
         String filename,
         String contentType,
         long sizeBytes,
+        @Schema(description = "Lifecycle of the document as it moves through the RAG ingestion "
+                + "pipeline (parse -> chunk -> embed -> index): PROCESSING, COMPLETED, or FAILED.")
         String status,
         String uploadedBy,
         Instant createdAt
