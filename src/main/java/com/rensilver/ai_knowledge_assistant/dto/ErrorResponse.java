@@ -1,5 +1,7 @@
 package com.rensilver.ai_knowledge_assistant.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.time.Instant;
 import java.util.List;
 
@@ -16,10 +18,15 @@ import java.util.List;
  */
 public record ErrorResponse(
         Instant timestamp,
+        @Schema(description = "HTTP status code, e.g. 409")
         int status,
+        @Schema(description = "HTTP reason phrase, e.g. \"Conflict\"")
         String error,
+        @Schema(description = "human-readable summary of what went wrong")
         String message,
+        @Schema(description = "request URI that triggered the error")
         String path,
+        @Schema(description = "field-level validation messages, if any (empty otherwise)")
         List<String> details
 ) {
     public ErrorResponse(int status, String error, String message, String path, List<String> details) {
