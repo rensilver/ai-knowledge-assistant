@@ -1,6 +1,7 @@
 package com.rensilver.ai_knowledge_assistant.dto;
 
 import com.rensilver.ai_knowledge_assistant.rag.DocumentChunker;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.ai.document.Document;
 
 /**
@@ -11,7 +12,13 @@ import org.springframework.ai.document.Document;
  * @param page     1-based page the cited chunk came from, or {@code null} for
  *                 documents indexed before page tracking existed
  */
-public record SourceReference(String filename, Integer page) {
+public record SourceReference(
+        @Schema(description = "original name of the uploaded document")
+        String filename,
+        @Schema(description = "1-based page the cited chunk came from, or null for documents "
+                + "indexed before page tracking existed")
+        Integer page
+) {
 
     private static final String UNKNOWN_FILENAME = "unknown source";
 
