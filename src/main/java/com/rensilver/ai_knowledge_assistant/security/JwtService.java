@@ -57,6 +57,10 @@ public class JwtService {
                 .compact();
     }
 
+    public long getExpirationMs() {
+        return expirationMs;
+    }
+
     public boolean isTokenValid(String token, UserDetails userDetails) {
         try {
             String username = extractUsername(token);

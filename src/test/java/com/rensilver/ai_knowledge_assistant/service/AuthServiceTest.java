@@ -18,7 +18,6 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -46,7 +45,6 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         authService = new AuthService(userRepository, passwordEncoder, authenticationManager, jwtService);
-        ReflectionTestUtils.setField(authService, "jwtExpirationMs", 86_400_000L);
     }
 
     @Test
@@ -65,6 +63,7 @@ class AuthServiceTest {
         when(userRepository.existsByEmail("ada@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("bcrypt-hash");
         when(jwtService.generateToken(any(UserDetails.class))).thenReturn("signed-jwt");
+        when(jwtService.getExpirationMs()).thenReturn(86_400_000L);
 
         RegisterRequest request = new RegisterRequest("Ada Lovelace", "ada@example.com", "password123");
         AuthResponse response = authService.register(request);
@@ -105,6 +104,7 @@ class AuthServiceTest {
         when(authenticationManager.authenticate(any())).thenReturn(null);
         when(userRepository.findByEmail("ada@example.com")).thenReturn(Optional.of(user));
         when(jwtService.generateToken(any(UserDetails.class))).thenReturn("signed-jwt");
+        when(jwtService.getExpirationMs()).thenReturn(86_400_000L);
 
         AuthResponse response = authService.login(new LoginRequest("ada@example.com", "password123"));
 

@@ -8,7 +8,6 @@ import com.rensilver.ai_knowledge_assistant.entity.UserEntity;
 import com.rensilver.ai_knowledge_assistant.exception.EmailAlreadyInUseException;
 import com.rensilver.ai_knowledge_assistant.repository.UserRepository;
 import com.rensilver.ai_knowledge_assistant.security.JwtService;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -29,9 +28,6 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
-
-    @Value("${app.jwt.expiration-ms:86400000}")
-    private long jwtExpirationMs;
 
     public AuthService(
             UserRepository userRepository,
@@ -100,7 +96,7 @@ public class AuthService {
 
         return new AuthResponse(
                 token,
-                jwtExpirationMs,
+                jwtService.getExpirationMs(),
                 user.getName(),
                 user.getEmail(),
                 user.getRole().name()
