@@ -36,6 +36,9 @@ import org.springframework.context.annotation.Primary;
 @Configuration
 public class OllamaConfig {
 
+    private static final double DEFAULT_TOP_P = 0.9;
+    private static final int DEFAULT_NUM_CTX = 4096;
+
     @Value("${spring.ai.ollama.chat.options.model:llama3.2:latest}")
     private String chatModel;
 
@@ -56,8 +59,8 @@ public class OllamaConfig {
         return OllamaChatOptions.builder()
                 .model(chatModel)
                 .temperature(temperature)
-                .topP(0.9)
-                .numCtx(4096);
+                .topP(DEFAULT_TOP_P)
+                .numCtx(DEFAULT_NUM_CTX);
     }
 
     /**

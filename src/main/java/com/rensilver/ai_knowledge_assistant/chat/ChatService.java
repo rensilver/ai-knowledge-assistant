@@ -30,8 +30,7 @@ public class ChatService {
     }
 
     public ChatResponse chat(ChatRequest request, String userEmail) {
-        UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new IllegalStateException("Authenticated user not found: " + userEmail));
+        UserEntity user = userRepository.getByEmail(userEmail);
 
         ConversationContext context = conversationMemoryService.resolve(request.conversationId(), user.getId());
         RagAnswer answer = ragService.answer(request.message(), context.memoryKey());

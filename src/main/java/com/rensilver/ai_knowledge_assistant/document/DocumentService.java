@@ -55,8 +55,7 @@ public class DocumentService {
             throw new UnsupportedFileTypeException(file.getContentType());
         }
 
-        UserEntity uploader = userRepository.findByEmail(uploaderEmail)
-                .orElseThrow(() -> new IllegalStateException("Authenticated user not found: " + uploaderEmail));
+        UserEntity uploader = userRepository.getByEmail(uploaderEmail);
 
         byte[] bytes;
         try {
