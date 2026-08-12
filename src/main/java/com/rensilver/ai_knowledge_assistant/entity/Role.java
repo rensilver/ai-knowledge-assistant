@@ -6,5 +6,10 @@ package com.rensilver.ai_knowledge_assistant.entity;
  */
 public enum Role {
     ADMIN,
-    USER
+    USER;
+
+    /** Spring Security authority form, e.g. {@code ROLE_ADMIN}. */
+    public String authority() {
+        return "ROLE_" + name();
+    }
 }

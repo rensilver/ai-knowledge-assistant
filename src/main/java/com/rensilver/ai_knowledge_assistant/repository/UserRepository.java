@@ -17,4 +17,14 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
     Optional<UserEntity> findByEmail(String email);
 
     boolean existsByEmail(String email);
+
+    /**
+     * Looks up the authenticated caller identified by {@code email}, throwing
+     * if the JWT names a user that no longer exists. Shared by every service
+     * that resolves "who's asking" from the security context.
+     */
+    default UserEntity getByEmail(String email) {
+        return findByEmail(email)
+                .orElseThrow(() -> new IllegalStateException("Authenticated user not found: " + email));
+    }
 }

@@ -38,7 +38,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         return User.builder()
                 .username(user.getEmail())
                 .password(user.getPassword())
-                .authorities(List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole())))
+                .authorities(List.of(new SimpleGrantedAuthority(user.getRole().authority())))
                 .accountExpired(false)
                 .accountLocked(false)
                 .credentialsExpired(false)

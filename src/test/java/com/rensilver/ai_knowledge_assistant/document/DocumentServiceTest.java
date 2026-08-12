@@ -74,7 +74,8 @@ class DocumentServiceTest {
     @Test
     void rejectsUploadFromAnUnknownUploader() {
         createService();
-        when(userRepository.findByEmail("ghost@example.com")).thenReturn(Optional.empty());
+        when(userRepository.getByEmail("ghost@example.com"))
+                .thenThrow(new IllegalStateException("Authenticated user not found: ghost@example.com"));
         MockMultipartFile file = new MockMultipartFile("file", "doc.pdf", "application/pdf", "%PDF-1.4".getBytes());
 
         assertThatThrownBy(() -> documentService.upload(file, "ghost@example.com"))
@@ -86,7 +87,7 @@ class DocumentServiceTest {
     @Test
     void storesTheFileAndHandsOffAsyncIngestionThenReturnsProcessing() {
         createService();
-        when(userRepository.findByEmail("ada@example.com")).thenReturn(Optional.of(uploader));
+        when(userRepository.getByEmail("ada@example.com")).thenReturn(uploader);
         when(documentRepository.save(any(DocumentEntity.class))).thenAnswer(invocation -> {
             DocumentEntity entity = invocation.getArgument(0);
             if (entity.getId() == null) {
