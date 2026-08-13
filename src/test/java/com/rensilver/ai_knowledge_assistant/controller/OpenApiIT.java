@@ -41,6 +41,7 @@ class OpenApiIT extends PgVectorTestSupport {
                 .contains("Auth")
                 .contains("Documents")
                 .contains("Chat")
-                .contains("Agent");
+                .contains("Agent")
+                .contains("Users");
     }
 }
