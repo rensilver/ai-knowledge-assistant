@@ -423,8 +423,16 @@
         </div>
         <div class="card">
           <h4>Roles: USER, ADMIN</h4>
-          <p><code>/auth/register</code> always creates role <code>USER</code> — nothing in the API promotes a
-            user to <code>ADMIN</code>. See the Postman note on <code>DELETE /documents/{id}</code>.</p>
+          <p><code>/auth/register</code> always creates role <code>USER</code>. From there, <code>GET /users</code>
+            (list all users) and <code>PATCH /users/{id}/role</code> (change a user's role) — both
+            <code>ADMIN</code>-only — are the only ways to grant or revoke <code>ADMIN</code>. A fresh deployment
+            also gets exactly one bootstrap admin for free: if <code>ADMIN_BOOTSTRAP_EMAIL</code> and
+            <code>ADMIN_BOOTSTRAP_PASSWORD</code> are set and no user with that email exists yet,
+            <code>AdminBootstrapRunner</code> creates one on startup. Because <code>JwtFilter</code> reloads
+            <code>UserDetails</code> from the database on every request rather than trusting the role baked into
+            the token at issuance, a role change made via <code>PATCH /users/{id}/role</code> takes effect on the
+            affected user's very next request — no re-login or token refresh needed. See the Postman note on
+            <code>DELETE /documents/{id}</code>.</p>
         </div>
       </div>
     </section>
@@ -842,9 +850,12 @@
           <code>204</code> with no body; <code>403</code> if the caller isn't <code>ADMIN</code>.</p>
         <div class="note">
           <span class="tag">Postman setup</span>
-          <p>Registration only ever creates <code>USER</code>. To test this endpoint, promote a user directly:
-            <code>UPDATE users SET role = 'ADMIN' WHERE email = 'ada@example.com';</code> — then log in again so
-            the new token carries <code>ROLE_ADMIN</code>.</p>
+          <p>Registration only ever creates <code>USER</code>. To test this endpoint, promote a user through the
+            API: <code>PATCH {{baseUrl}}/users/{id}/role</code> with body <code>{"role": "ADMIN"}</code>, sent as
+            an existing <code>ADMIN</code> (or as the bootstrap admin — see
+            <code>ADMIN_BOOTSTRAP_EMAIL</code>/<code>ADMIN_BOOTSTRAP_PASSWORD</code> above). No re-login is
+            needed afterward: <code>JwtFilter</code> reloads the user's role from the database on every request,
+            so the promoted user's existing token works with the new role on its very next request.</p>
         </div>
       </div>
 

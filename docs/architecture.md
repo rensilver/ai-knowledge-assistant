@@ -84,8 +84,14 @@ server-side session to short-circuit it.
 **Public routes:** `/auth/**`, `/health/**`, `/actuator/**`, `/swagger-ui/**`, `/v3/api-docs/**`, and any
 `OPTIONS` request — everything else requires a valid token (`SecurityConfig`).
 
-**Roles: `USER`, `ADMIN`.** `/auth/register` always creates role `USER` — nothing in the API promotes a user to
-`ADMIN`. See the Postman note on `DELETE /documents/{id}` below.
+**Roles: `USER`, `ADMIN`.** `/auth/register` always creates role `USER`. From there, `GET /users` (list all
+users) and `PATCH /users/{id}/role` (change a user's role) — both `ADMIN`-only — are the only ways to grant or
+revoke `ADMIN`. A fresh deployment also gets exactly one bootstrap admin for free: if `ADMIN_BOOTSTRAP_EMAIL`
+and `ADMIN_BOOTSTRAP_PASSWORD` are set and no user with that email exists yet, `AdminBootstrapRunner` creates
+one on startup. Because `JwtFilter` reloads `UserDetails` from the database on every request rather than
+trusting the role baked into the token at issuance, a role change made via `PATCH /users/{id}/role` takes
+effect on the affected user's very next request — no re-login or token refresh needed. See the Postman note on
+`DELETE /documents/{id}` below.
 
 ## 3. Document ingestion — `POST /documents/upload`
 
@@ -330,9 +336,11 @@ Lists every document, newest first, regardless of who uploaded it.
 Removes the document row, its stored file, and every indexed chunk. Returns `204` with no body; `403` if the
 caller isn't `ADMIN`.
 
-> **Postman setup:** registration only ever creates `USER`. To test this endpoint, promote a user directly:
-> `UPDATE users SET role = 'ADMIN' WHERE email = 'ada@example.com';` — then log in again so the new token
-> carries `ROLE_ADMIN`.
+> **Postman setup:** registration only ever creates `USER`. To test this endpoint, promote a user through the
+> API: `PATCH {{baseUrl}}/users/{id}/role` with body `{"role": "ADMIN"}`, sent as an existing `ADMIN` (or as
+> the bootstrap admin — see `ADMIN_BOOTSTRAP_EMAIL`/`ADMIN_BOOTSTRAP_PASSWORD` above). No re-login is needed
+> afterward: `JwtFilter` reloads the user's role from the database on every request, so the promoted user's
+> existing token works with the new role on its very next request.
 
 ### `POST {{baseUrl}}/chat` — bearer required
 
