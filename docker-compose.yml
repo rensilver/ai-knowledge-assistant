@@ -67,6 +67,10 @@ services:
       # Override in any non-local environment: openssl rand -base64 32
       JWT_SECRET: ${JWT_SECRET:-Q/BAIPFSqVcGdm0ZAt65WJvx5oigSTrFJuash9NaZm8=}
       APP_DOCUMENT_UPLOAD_DIR: /var/lib/aika/uploads
+      # Set both to seed one ADMIN user on first boot; empty default is a
+      # no-op, matching AdminBootstrapRunner's own behavior. See CLAUDE.md.
+      ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
     ports:
       - "8080:8080"
     volumes:

@@ -45,7 +45,7 @@ public class UserService {
             return UserResponse.from(user);
         }
 
-        if (currentRole == Role.ADMIN && newRole == Role.USER && userRepository.countByRole(Role.ADMIN) <= 1) {
+        if (currentRole == Role.ADMIN && newRole != Role.ADMIN && userRepository.countByRole(Role.ADMIN) <= 1) {
             throw new LastAdminException();
         }
 

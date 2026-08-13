@@ -10,8 +10,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -84,5 +86,16 @@ class AdminBootstrapRunnerTest {
         assertThat(saved.getEmail()).isEqualTo("admin@example.com");
         assertThat(saved.getPassword()).isEqualTo("bcrypt-hash");
         assertThat(saved.getRole()).isEqualTo(Role.ADMIN);
+    }
+
+    @Test
+    void completesWithoutThrowingWhenAnotherInstanceWinsTheRaceToCreateTheAdmin() throws Exception {
+        when(userRepository.existsByEmail("admin@example.com")).thenReturn(false);
+        when(passwordEncoder.encode("correct-password")).thenReturn("bcrypt-hash");
+        when(userRepository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate key: email"));
+        AdminBootstrapRunner runner = new AdminBootstrapRunner(
+                "admin@example.com", "correct-password", userRepository, passwordEncoder, validator);
+
+        assertThatCode(() -> runner.run(null)).doesNotThrowAnyException();
     }
 }

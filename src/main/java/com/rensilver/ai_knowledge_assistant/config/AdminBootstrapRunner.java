@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
@@ -77,7 +78,18 @@ public class AdminBootstrapRunner implements ApplicationRunner {
                 .password(passwordEncoder.encode(bootstrapPassword))
                 .role(Role.ADMIN)
                 .build();
-        userRepository.save(admin);
+
+        try {
+            userRepository.save(admin);
+        } catch (DataIntegrityViolationException ex) {
+            // Two instances of a multi-replica deployment can both pass the
+            // existsByEmail check before either commits; the loser hits the
+            // unique constraint on email here. That's fine — the admin now
+            // exists either way — so log and return instead of letting Boot
+            // treat this ApplicationRunner failure as fatal and crash-loop.
+            log.info("Admin bootstrap skipped: another instance already created a user with email {}", bootstrapEmail);
+            return;
+        }
 
         log.info("Bootstrapped initial admin user: {}", bootstrapEmail);
     }
