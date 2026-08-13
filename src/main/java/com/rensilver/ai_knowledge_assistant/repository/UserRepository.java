@@ -1,5 +1,6 @@
 package com.rensilver.ai_knowledge_assistant.repository;
 
+import com.rensilver.ai_knowledge_assistant.entity.Role;
 import com.rensilver.ai_knowledge_assistant.entity.UserEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -27,4 +28,10 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
         return findByEmail(email)
                 .orElseThrow(() -> new IllegalStateException("Authenticated user not found: " + email));
     }
+
+    /**
+     * Backs the last-admin guard in UserService.changeRole: a demotion from
+     * ADMIN to USER is rejected if this returns 1 for the demoted user.
+     */
+    long countByRole(Role role);
 }
