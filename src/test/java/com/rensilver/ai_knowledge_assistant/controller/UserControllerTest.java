@@ -111,4 +111,16 @@ class UserControllerTest {
                         .content("{}"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    @WithMockUser
+    void changeRoleReturns400WhenRoleIsNotAValidEnumValue() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mockMvc.perform(patch("/users/{id}/role", id)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"NOT_A_ROLE\"}"))
+                .andExpect(status().isBadRequest());
+    }
 }
