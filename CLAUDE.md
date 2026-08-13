@@ -25,7 +25,8 @@ For anything other than local dev, activate the `prod` profile (`SPRING_PROFILES
 - **Observability**: done — `CorrelationIdFilter` stamps every request (and the async ingestion thread) with a request id via MDC; Micrometer timers on the retrieval, chat-answer, and agent-turn paths (`/actuator/metrics`); structured JSON logging (Boot's built-in ECS format) in the `prod` profile.
 - **Migrations**: V1–V5 verified applying against pgvector, both fresh and incrementally.
 - **API docs**: done — Swagger UI / OpenAPI 3 wired up via `springdoc-openapi-starter-webmvc-ui` (`OpenApiConfig`), with a JWT bearer security scheme and `@Operation`/`@ApiResponse` annotations documenting Auth, Documents, Chat, and Agent.
-- **Tests**: 38 unit + 11 integration (`./mvnw verify`; integration tests need Docker).
+- **Admin role management**: done — one bootstrap admin is seeded from `ADMIN_BOOTSTRAP_EMAIL`/`ADMIN_BOOTSTRAP_PASSWORD` at startup (`AdminBootstrapRunner`), and `GET /users` / `PATCH /users/{id}/role` (both `@PreAuthorize("hasRole('ADMIN')")`) let an admin list users and promote/demote roles, guarded against demoting the last remaining admin. The app can grant `ADMIN` entirely through itself now; no direct database access is needed.
+- **Tests**: 54 unit + 16 integration (`./mvnw verify`; integration tests need Docker).
 
 ## Key decisions worth knowing
 
