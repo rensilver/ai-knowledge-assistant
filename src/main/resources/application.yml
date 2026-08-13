@@ -60,3 +60,11 @@ app:
     overfetch-factor: 4
     # Re-rank blend: 1.0 = pure vector similarity, 0.0 = pure keyword overlap.
     vector-weight: 0.75
+  admin:
+    # Optional: if both are set and no user with this email exists yet, an
+    # ADMIN user is created on startup. Leave unset for local dev unless you
+    # need one. See AdminBootstrapRunner.
+    #   export ADMIN_BOOTSTRAP_EMAIL="admin@example.com"
+    #   export ADMIN_BOOTSTRAP_PASSWORD="$(openssl rand -base64 18)"
+    bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
+    bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
