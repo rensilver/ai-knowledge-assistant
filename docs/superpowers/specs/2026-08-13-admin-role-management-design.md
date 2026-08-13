@@ -121,12 +121,20 @@ Both endpoints `@PreAuthorize("hasRole('ADMIN')")`, same pattern as
   `UserNotFoundException`; successful promotion and demotion (non-last-admin
   case) persist and return the updated DTO.
 - **`UserControllerTest`** (`@WebMvcTest`, `@MockitoBean` for `UserService`):
-  `403` for a non-admin caller on both endpoints (mirrors the existing
-  `DocumentControllerTest` delete-authorization test); `400` on missing/
-  invalid `role` in the request body.
+  request/response mapping and exception translation only — `200` with the
+  mapped body, `404` (`UserNotFoundException`), `409` (`LastAdminException`),
+  `400` on missing/invalid `role` in the request body. **Not** `@PreAuthorize`
+  enforcement: `SecurityConfig` (which carries `@EnableMethodSecurity`) isn't
+  part of the `@WebMvcTest` slice's context, so `@PreAuthorize` is inert
+  there — the same reason `DocumentControllerTest` never exercises the
+  403 case on `DELETE /documents/{id}` today either, even though it's
+  `@PreAuthorize`-gated too.
 - **Integration** (extends the `*IT` suite pattern, real Postgres via
-  Testcontainers): start the app with `ADMIN_BOOTSTRAP_EMAIL`/`_PASSWORD`
-  set, log in with those credentials, confirm `role: "ADMIN"` in the
-  response; then, as that admin, `PATCH` a second (seeded) user to `ADMIN`
-  and back down to `USER`, and confirm attempting to demote the sole
-  remaining admin returns `409`.
+  Testcontainers, real `SecurityConfig` and therefore real method security):
+  start the app with `ADMIN_BOOTSTRAP_EMAIL`/`_PASSWORD` set, log in with
+  those credentials, confirm `role: "ADMIN"` in the response; as that admin,
+  `PATCH` a second (seeded) user to `ADMIN` and back down to `USER`; confirm
+  attempting to demote the sole remaining admin returns `409`; and confirm a
+  non-admin's token gets `403` on both `GET /users` and `PATCH
+  /users/{id}/role` — closing the gap that `DELETE /documents/{id}`'s
+  authorization has no test coverage anywhere in the suite today.
