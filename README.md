@@ -226,7 +226,3 @@ Outside local dev, activate the `prod` profile and export a real secret first â€
 export JWT_SECRET="$(openssl rand -base64 32)"
 SPRING_PROFILES_ACTIVE=prod ./mvnw spring-boot:run
 ```
-
----
-
-Generated from the architecture documentation in `src/main/java/com/rensilver/ai_knowledge_assistant`.
