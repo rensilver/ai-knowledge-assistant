@@ -336,11 +336,65 @@ Lists every document, newest first, regardless of who uploaded it.
 Removes the document row, its stored file, and every indexed chunk. Returns `204` with no body; `403` if the
 caller isn't `ADMIN`.
 
-> **Postman setup:** registration only ever creates `USER`. To test this endpoint, promote a user through the
-> API: `PATCH {{baseUrl}}/users/{id}/role` with body `{"role": "ADMIN"}`, sent as an existing `ADMIN` (or as
-> the bootstrap admin — see `ADMIN_BOOTSTRAP_EMAIL`/`ADMIN_BOOTSTRAP_PASSWORD` above). No re-login is needed
-> afterward: `JwtFilter` reloads the user's role from the database on every request, so the promoted user's
-> existing token works with the new role on its very next request.
+> **Postman setup:** registration only ever creates `USER`. To test this endpoint, promote a user to `ADMIN`
+> first — see `PATCH {{baseUrl}}/users/{id}/role` below (or use the bootstrap admin, `ADMIN_BOOTSTRAP_EMAIL`/
+> `ADMIN_BOOTSTRAP_PASSWORD` above).
+
+### `GET {{baseUrl}}/users` — ADMIN role required
+
+Lists every registered user. `403` if the caller isn't `ADMIN`.
+
+200 response:
+
+```json
+[
+  {
+    "id": "3f2a9c1e-...",
+    "name": "Ada Lovelace",
+    "email": "ada@example.com",
+    "role": "USER",
+    "createdAt": "2026-08-10T14:02:11Z"
+  }
+]
+```
+
+### `PATCH {{baseUrl}}/users/{id}/role` — ADMIN role required
+
+Changes a user's role. `403` if the caller isn't `ADMIN`; `404` if the id doesn't exist; `409` if the change
+would demote the last remaining `ADMIN` to any other role. `JwtFilter` reloads roles from the database on every
+request, so the affected user's existing token reflects the change on its very next call — no re-login needed.
+
+Body — raw JSON:
+
+```json
+{
+  "role": "ADMIN"
+}
+```
+
+200 response:
+
+```json
+{
+  "id": "3f2a9c1e-...",
+  "name": "Ada Lovelace",
+  "email": "ada@example.com",
+  "role": "ADMIN",
+  "createdAt": "2026-08-10T14:02:11Z"
+}
+```
+
+409 — last-admin guard:
+
+```json
+{
+  "status": 409,
+  "error": "Conflict",
+  "message": "Cannot change role: this is the last remaining admin",
+  "path": "/users/{id}/role",
+  "details": []
+}
+```
 
 ### `POST {{baseUrl}}/chat` — bearer required
 

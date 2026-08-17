@@ -234,6 +234,7 @@
   .method.post { background: var(--accent-soft); color: var(--accent-strong); }
   .method.get { background: var(--chip-get-soft); color: var(--chip-get); }
   .method.delete { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+  .method.patch { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
   .path { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 1rem; font-weight: 600; }
   .auth-chip {
     margin-left: auto;
@@ -850,12 +851,71 @@
           <code>204</code> with no body; <code>403</code> if the caller isn't <code>ADMIN</code>.</p>
         <div class="note">
           <span class="tag">Postman setup</span>
-          <p>Registration only ever creates <code>USER</code>. To test this endpoint, promote a user through the
-            API: <code>PATCH {{baseUrl}}/users/{id}/role</code> with body <code>{"role": "ADMIN"}</code>, sent as
-            an existing <code>ADMIN</code> (or as the bootstrap admin — see
-            <code>ADMIN_BOOTSTRAP_EMAIL</code>/<code>ADMIN_BOOTSTRAP_PASSWORD</code> above). No re-login is
-            needed afterward: <code>JwtFilter</code> reloads the user's role from the database on every request,
-            so the promoted user's existing token works with the new role on its very next request.</p>
+          <p>Registration only ever creates <code>USER</code>. To test this endpoint, promote a user to
+            <code>ADMIN</code> first — see <code>PATCH {{baseUrl}}/users/{id}/role</code> below (or use the
+            bootstrap admin, <code>ADMIN_BOOTSTRAP_EMAIL</code>/<code>ADMIN_BOOTSTRAP_PASSWORD</code> above).</p>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">{{baseUrl}}/users</span>
+          <span class="auth-chip required">ADMIN role required</span>
+        </div>
+        <p class="desc">Lists every registered user. <code>403</code> if the caller isn't <code>ADMIN</code>.</p>
+        <div class="endpoint-block">
+          <h5>200 — response</h5>
+          <pre><code>[
+  {
+    "id": "3f2a9c1e-...",
+    "name": "Ada Lovelace",
+    "email": "ada@example.com",
+    "role": "USER",
+    "createdAt": "2026-08-10T14:02:11Z"
+  }
+]</code></pre>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-head">
+          <span class="method patch">PATCH</span>
+          <span class="path">{{baseUrl}}/users/{id}/role</span>
+          <span class="auth-chip required">ADMIN role required</span>
+        </div>
+        <p class="desc">Changes a user's role. <code>403</code> if the caller isn't <code>ADMIN</code>;
+          <code>404</code> if the id doesn't exist; <code>409</code> if the change would demote the last
+          remaining <code>ADMIN</code> to any other role. <code>JwtFilter</code> reloads roles from the database
+          on every request, so the affected user's existing token reflects the change on its very next call —
+          no re-login needed.</p>
+        <div class="endpoint-grid">
+          <div class="endpoint-block">
+            <h5>Body — raw JSON</h5>
+            <pre><code>{
+  "role": "ADMIN"
+}</code></pre>
+          </div>
+          <div class="endpoint-block">
+            <h5>200 — response</h5>
+            <pre><code>{
+  "id": "3f2a9c1e-...",
+  "name": "Ada Lovelace",
+  "email": "ada@example.com",
+  "role": "ADMIN",
+  "createdAt": "2026-08-10T14:02:11Z"
+}</code></pre>
+          </div>
+        </div>
+        <div class="endpoint-block">
+          <h5>409 — last-admin guard</h5>
+          <pre><code>{
+  "status": 409,
+  "error": "Conflict",
+  "message": "Cannot change role: this is the last remaining admin",
+  "path": "/users/{id}/role",
+  "details": []
+}</code></pre>
         </div>
       </div>
 
